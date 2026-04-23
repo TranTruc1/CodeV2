@@ -1026,7 +1026,7 @@ async function reloadDataFromFB() {
             continue;
         }
 
-        const statusMsg = `Đang lấy token (lần ${attempts + 1}/${maxAttempts})...`;
+        const statusMsg = `Đang lấy danh sách page...`;
         updateLoadingStatus(statusMsg);
         await tabShowOverlay(tab.id, statusMsg);
 
