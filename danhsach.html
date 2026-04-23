@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Fanpage Facebook</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background-color: #f0f2f5; padding: 20px; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 20px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        th, td { padding: 16px 24px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        th { background-color: #f8f9fa; font-weight: 700; color: #444; border-bottom: 2px solid #dee2e6; text-align: left; }
+        
+        table th:nth-child(1), table td:nth-child(1) { width: 50px; text-align: center; color: #666; font-weight: bold; }
+        table th:nth-child(2), table td:nth-child(2) { width: 80px; text-align: center; }
+        table th:nth-child(3), table td:nth-child(3) { width: auto; font-size: 16px; font-weight: 600; color: #1c1e21; cursor: pointer; }
+        table td:nth-child(3):hover .page-name-text { color: #007bff; text-decoration: underline; }
+        table th:nth-child(4), table td:nth-child(4) { width: 1%; white-space: nowrap; text-align: left; }
+        table th:nth-child(5), table td:nth-child(5) { width: 50px; text-align: center; }
+
+        img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 1px solid #ddd; transition: transform 0.2s; }
+        img:hover { transform: scale(1.1); }
+
+        .role-badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; margin-right: 8px; text-transform: uppercase; vertical-align: middle; position: relative; top: -1px; }
+        .role-admin { background-color: #dc3545; }
+        .role-btv { background-color: #28a745; }
+
+        button { padding: 10px 16px; cursor: pointer; font-size: 14px; font-weight: 500; border: none; border-radius: 5px; background-color: #007bff; color: white; transition: all 0.2s ease; margin-right: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        button:hover { background-color: #0056b3; transform: translateY(-1px); }
+        button.delete { background-color: #dc3545; }
+        button.delete:hover { background-color: #c82333; }
+        button.copy-pages, button.remember-btn { background-color: #28a745; display: inline-flex; align-items: center; justify-content: center; height: 42px; }
+        button.copy-pages:hover, button.remember-btn:hover { background-color: #218838; }
+        button.sort-handle { cursor: grab; background-color: #6c757d; padding: 10px 14px; }
+
+        .input-group { margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        input[type="text"], textarea, select { padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; outline: none; transition: border 0.3s; }
+        input[type="text"]:focus, textarea:focus, select:focus { border-color: #007bff; }
+        
+        .button-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 10px; flex-wrap: wrap; }
+        .search-wrapper { display: flex; gap: 10px; flex-grow: 1; max-width: 900px; align-items: center;}
+        #sortSelect { width: 200px; height: 42px; cursor: pointer; background-color: #fff; box-sizing: border-box; }
+        input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: #007bff; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
+        .modal-content { background-color: white; padding: 30px; border-radius: 12px; width: 480px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .modal h2 { margin-top: 0; color: #333; font-size: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .modal input, .modal textarea { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        .modal-buttons { margin-top: 20px; text-align: right; border-top: 1px solid #eee; padding-top: 15px; }
+
+        .info-header { display: flex; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        .info-header img { width: 80px; height: 80px; margin-right: 20px; border: 3px solid #e7f3ff; }
+        .info-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .stat-item { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #e9ecef; }
+        .stat-value { font-size: 20px; font-weight: 700; color: #007bff; display: block; margin-top: 5px; }
+        .stat-label { font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase; }
+
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 2000; }
+        .toast { color: white; padding: 15px 25px; border-radius: 8px; margin-bottom: 10px; opacity: 0; transition: opacity 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; }
+        .toast.show { opacity: 1; }
+        .toast-success { background-color: #28a745; }
+        .toast-error { background-color: #dc3545; }
+        .toast-info { background-color: #17a2b8; }
+        
+        .remembered-tag { background-color: #e2f0fb; color: #007bff; border: 1px solid #b3d7ff; padding: 5px 12px; border-radius: 20px; font-size: 13px; margin-right: 5px; display: inline-flex; align-items: center; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .remembered-tag:hover { background-color: #d0e8fa; }
+        .remembered-tag .delete-tag { background: none; border: none; color: #dc3545; margin-left: 8px; font-size: 16px; padding: 0; cursor: pointer; box-shadow: none; font-weight: bold; line-height: 1; }
+        
+        .suggestion-item { padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+        .suggestion-item:hover { background-color: #e7f3ff; }
+        /* --- FOOTER BẢN QUYỀN --- */
+        .footer-copyright {
+            text-align: center;
+            padding: 20px 10px;
+            margin-top: 30px;
+            font-size: 13px;
+            color: #6c757d;
+            border-top: 1px dashed #dee2e6;
+        }
+        .footer-copyright .author {
+            font-weight: 700;
+            color: #1877f2;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .footer-copyright .heart {
+            color: #dc3545;
+            animation: heartbeat 1.5s infinite;
+            display: inline-block;
+        }
+        @keyframes heartbeat {
+            0% { transform: scale(1); }
+            10% { transform: scale(1.2); }
+            20% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Chỉ 1 dòng input-group duy nhất -->
+    <div class="input-group">
+        <button id="reloadDataBtn" style="background-color: #007bff;">🔄 Lấy lại danh sách</button>
+        <button id="copyPagesBtn" class="copy-pages">Copy List Tên</button>
+        <button id="copyMessBtn" class="copy-pages">Copy Link Inbox</button>
+        <div id="rememberedTags" style="display: flex; align-items: center; gap: 5px; margin-left: auto; border-left: 1px solid #ddd; padding-left: 15px;"></div>
+    </div>
+    
+    <div class="button-container">
+        <div class="search-wrapper">
+            <div style="position: relative; flex-grow: 1; max-width: 400px;">
+                <input type="text" id="searchInput" placeholder="Nguyễn Văn A, Nguyễn Văn B, Tên page (page ở cuối)" style="width: 100%; height: 42px; box-sizing: border-box;">
+                <div id="searchSuggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #007bff; border-radius: 0 0 6px 6px; max-height: 250px; overflow-y: auto; z-index: 9999; box-shadow: 0 6px 12px rgba(0,0,0,0.15);"></div>
+            </div>
+            
+            <label style="cursor: pointer; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #333; margin: 0 10px;">
+                <input type="checkbox" id="searchByRoleCheckbox" style="margin-right: 6px;"> 
+                Tìm theo Quyền
+            </label>
+
+            <button id="showAllUsersBtn" style="background-color: #17a2b8; display: flex; align-items: center; height: 42px;">
+                👥 Tổng hợp
+            </button>
+
+            <select id="sortSelect">
+                <option value="default">Sắp xếp: Mặc định</option>
+                <option value="likes_desc">Like: Cao ➝ Thấp</option>
+                <option value="likes_asc">Like: Thấp ➝ Cao</option>
+                <option value="role_admin">Quyền: Ưu tiên Admin</option>
+            </select>
+        </div>
+        
+        <div style="display: flex;">
+            <button id="deleteSelectedBtn" class="delete" style="margin-right: 15px;">Xóa đã chọn</button>
+            <button id="openAllFacebookBtn" class="copy-pages">Mở Page</button>
+            <button id="openAllChatBtn" class="copy-pages">Mở Chat</button>
+            <button id="openAllCareBtn" class="copy-pages">Mở Chăm sóc</button>
+            <button id="rememberBtn" class="remember-btn">Tạo List Ghi Nhớ</button>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>STT</th>
+                <th>Avt</th>
+                <th>Tên Page (Click xem chi tiết)</th>
+                <th>Hành động</th>
+                <th><input type="checkbox" id="selectAll"></th>
+            </tr>
+        </thead>
+        <tbody id="buttonContainer"></tbody>
+    </table>
+
+    <div id="infoModal" class="modal">
+        <div class="modal-content">
+            <div class="info-header">
+                <img id="infoImg" src="" alt="Page Avatar">
+                <div>
+                    <h3 id="infoName" style="margin: 0; color: #333;">Tên Page</h3>
+                    <p id="infoId" style="margin: 5px 0; color: #666; font-size: 14px;">ID: 123456</p>
+                    <p id="infoRoleText" style="margin: 5px 0; font-weight: bold; font-size: 14px;"></p>
+                </div>
+            </div>
+            <div class="info-stats">
+                <div class="stat-item"><span class="stat-label">Theo dõi</span><span class="stat-value" id="infoFollows">0</span></div>
+                <div class="stat-item"><span class="stat-label">Thích</span><span class="stat-value" id="infoLikes">0</span></div>
+                <div class="stat-item"><span class="stat-label">Tin chưa đọc</span><span class="stat-value" id="infoUnread" style="color: #dc3545;">0</span></div>
+                <div class="stat-item"><span class="stat-label">Tổng tin nhắn</span><span class="stat-value" id="infoTotalMsg">0</span></div>
+            </div>
+            <div style="margin-top: 15px; font-size: 13px; color: #444; background: #f1f2f3; padding: 12px; border-radius: 5px; word-wrap: break-word; max-height: 250px; overflow-y: auto;">
+                <span id="infoPermsDetail"></span>
+            </div>
+            <div class="modal-buttons" style="text-align: center;">
+                <button id="closeInfoModalBtn" style="background-color: #6c757d; min-width: 100px;">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="addPageModal" class="modal">
+        <div class="modal-content">
+            <h2>Thêm Page Thủ Công</h2>
+            <input type="text" id="modalPageId" placeholder="Nhập ID Page">
+            <input type="text" id="modalPageName" placeholder="Nhập Tên Page">
+            <input type="text" id="modalPageImage" placeholder="Nhập URL Hình Ảnh">
+            <div class="modal-buttons">
+                <button id="saveNewPageBtn">Lưu</button>
+                <button id="closeAddPageModalBtn" style="background-color: #6c757d;">Hủy</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="editPageModal" class="modal">
+        <div class="modal-content">
+            <h2>Chỉnh sửa Page</h2>
+            <input type="text" id="editPageId" placeholder="Nhập ID Page">
+            <input type="text" id="editPageName" placeholder="Nhập Tên Page">
+            <input type="text" id="editPageImage" placeholder="Nhập URL Hình Ảnh">
+            <div class="modal-buttons">
+                <button id="saveEditedPageBtn">Lưu</button>
+                <button id="closeEditPageModalBtn" style="background-color: #6c757d;">Hủy</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="rememberModal" class="modal">
+        <div class="modal-content">
+            <h2>Lưu Danh Sách</h2>
+            <input type="text" id="rememberName" placeholder="Nhập tên danh sách (VD: Nhóm 1)">
+            <div class="modal-buttons">
+                <button id="saveRememberedListBtn">Lưu</button>
+                <button id="closeRememberModalBtn" style="background-color: #6c757d;">Hủy</button>
+            </div>
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+            <h3 style="font-size: 16px; color: #555;">Danh sách đã lưu</h3>
+            <ul id="rememberedLists" style="list-style: none; padding: 0; max-height: 200px; overflow-y: auto;"></ul>
+        </div>
+    </div>
+
+    <div id="addByJsModal" class="modal">
+        <div class="modal-content">
+            <h2>Nhập Data JSON</h2>
+            <textarea id="jsInput" placeholder='[{"id": "...", "name": "...", "perms": ["ADMINISTER"], ...}]' style="height:150px; font-family: monospace;"></textarea>
+            <div style="text-align:left; font-size: 14px; margin-top: 10px;">
+                <label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" id="clearAllBeforeAdd" style="width: auto; margin-right: 8px;"> Xóa dữ liệu cũ, thay bằng dữ liệu mới</label>
+            </div>
+            <div style="text-align:left; margin-top: 15px;">
+                <p style="margin: 0 0 8px 0; font-weight: bold; font-size: 14px; color: #333;">Thêm vào nhóm ghi nhớ:</p>
+                <div id="addByJsRememberLists" style="border: 1px solid #eee; padding: 10px; border-radius: 6px; background: #f9f9f9;"></div>
+            </div>
+            <div class="modal-buttons">
+                <button id="confirmAddByJsBtn">Xác nhận Thêm</button>
+                <button id="closeAddByJsModalBtn" style="background-color: #6c757d;">Hủy</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="allUsersModal" class="modal">
+        <div class="modal-content" style="width: 550px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 15px;">
+                <h2 style="margin: 0; border: none; padding: 0;">👥 Tổng hợp Thành Viên</h2>
+                <label style="cursor: pointer; font-size: 14px; font-weight: bold; color: #1877f2; display: flex; align-items: center; background: #e7f3ff; padding: 6px 12px; border-radius: 6px;">
+                    <input type="checkbox" id="openProfileCheckbox" style="margin-right: 5px; width: 16px; height: 16px;">
+                    Tick để: Mở Tab FB Cá Nhân
+                </label>
+            </div>
+            <div style="font-size: 13px; color: #666; margin-bottom: 15px;">
+                <i>* Nếu <b>không tick</b>: Click vào tên sẽ Lọc ra các page người đó cầm.<br>
+                * Nếu <b>có tick</b>: Click vào tên sẽ Mở trang Facebook cá nhân của người đó sang Tab mới.</i>
+            </div>
+            <div id="allUsersList" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 350px; overflow-y: auto; padding-right: 5px;">
+            </div>
+            <div class="modal-buttons" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button id="searchSelectedUsersBtn" style="background-color: #28a745;">🔍 Tìm kiếm người đã chọn</button>
+                <button id="closeAllUsersModalBtn" style="background-color: #6c757d;">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer-copyright">
+        © 2026 Quản Lý Fanpage | Code by <span class="author">Trúc</span> <span class="heart">❤</span>
+    </div>
+<!-- Modal Loading khi lấy token -->
+<div id="loadingModal" class="modal" style="display: none; z-index: 10000;">
+    <div class="modal-content" style="width: 400px; text-align: center;">
+        <h3 style="margin-top: 0;">🔄 Đang lấy dữ liệu</h3>
+        <p>Vui lòng <strong>không chuyển tab hoặc đóng tab</strong> Facebook Business đang mở.</p>
+        <div class="spinner" style="margin: 20px auto; width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <p id="loadingStatus">Đang chuẩn bị...</p>
+        <style>
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        </style>
+        <button id="cancelReloadBtn" style="background-color: #dc3545; margin-top: 10px;">Hủy bỏ</button>
+    </div>
+</div>
+
+    <script src="./Sortable.min.js"></script>
+    <script src="token.js"></script>
+    <script src="danhsach.js"></script>
+</body>
+</html>

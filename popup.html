@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Facebook Tool</title>
+    <style>
+        body {
+            width: 360px;
+            padding: 15px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 16px;
+            text-align: center;
+            border-bottom: 2px solid #1877f2;
+            padding-bottom: 8px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            color: white;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        #openManagerBtn {
+            background: linear-gradient(135deg, #1877f2, #0d5ab5);
+        }
+        #toggleBtn {
+            background: linear-gradient(135deg, #dc3545, #a71d2a);
+        }
+        #toggleBtn.active {
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+        }
+        #getTokenBtn {
+            background: linear-gradient(135deg, #17a2b8, #0f6e8a);
+        }
+        .token-area {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+        .token-area label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #555;
+            display: block;
+            margin-bottom: 5px;
+        }
+        #tokenResult {
+            width: 100%;
+            padding: 8px;
+            font-size: 11px;
+            font-family: monospace;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            background: #f8f9fa;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        .copy-btn {
+            background: #6c757d;
+            padding: 6px 12px;
+            font-size: 12px;
+            margin-top: 5px;
+            width: auto;
+            display: inline-block;
+        }
+        .status-text {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
+        }
+        .info {
+            font-size: 11px;
+            color: #888;
+            text-align: center;
+            margin-top: 8px;
+        }
+        .stats {
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 11px;
+            text-align: center;
+        }
+        .warning-message {
+            background: #fff3cd;
+            border: 1px solid #ffecb5;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 12px;
+            color: #856404;
+        }
+        .warning-message a {
+            color: #1877f2;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .warning-message a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h3>Facebook Tool</h3>
+        <button id="openManagerBtn">📋 Mở Quản Lý Page</button>
+        <button id="toggleBtn">⭕ Đang Tắt</button>
+        <button id="getTokenBtn">🔑 Lấy Token User</button>
+        
+        <div id="warningBox" class="warning-message" style="display: none;">
+            ⚠️ Bạn chưa ở đúng trang.<br>
+            Vui lòng mở: <a href="#" id="openTokenPageLink"></a><br>
+            (Sau khi mở, quay lại và nhấn "Lấy Token User")
+        </div>
+
+        <div class="token-area">
+            <label>📋 Access Token:</label>
+            <textarea id="tokenResult" rows="4" readonly placeholder="Nhấn nút 'Lấy Token User' để lấy token..."></textarea>
+            <button id="copyTokenBtn" class="copy-btn">📋 Copy Token</button>
+        </div>
+
+        <div class="status-text">
+            Trạng thái: <span id="statusSpan">Chưa kích hoạt</span>
+        </div>
+        <div class="stats">
+            📊 Số Page: <span id="pageCount" style="color:#1877f2;font-weight:bold;">0</span>
+        </div>
+        <div class="info">
+        <br>
+            🚀 Code By Trúc
+        </div>
+    </div>
+    <script src="popup.js"></script>
+    <script src="token.js"></script>
+</body>
+</html>

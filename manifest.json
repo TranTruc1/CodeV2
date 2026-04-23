@@ -1,0 +1,68 @@
+{
+  "manifest_version": 3,
+  "name": "Quản lý Facebook V2",
+  "version": "2.0",
+  "description": "Tool quản lý Fanpage Facebook và auto gửi tin nhắn đến khách hàng cũ - Code by Trúc",
+
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+
+  "permissions": [
+    "storage", 
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "https://*.facebook.com/*"
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Chăm Khách Facebook",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://web.facebook.com/*",
+        "https://www.facebook.com/*",
+        "https://graph.facebook.com/*"
+      ],
+      "js": ["content.js", "danhsach.js"],
+      "run_at": "document_idle"
+    },
+        {
+      "matches": [
+        "https://business.facebook.com/*"
+      ],
+      "js": ["thongbao.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "important_code.js", 
+        "danhsach.html"
+      ],
+      "matches": [
+        "https://web.facebook.com/*",
+        "https://www.facebook.com/*",
+        "https://graph.facebook.com/*"
+      ]
+    }
+  ]
+}
