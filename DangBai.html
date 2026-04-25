@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng bài hàng loạt & Quản lý Page</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 24px;
+            background: #f0f2f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .app-container {
+            max-width: 70%;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+            padding: 20px;
+            height: 100%;
+            overflow-y: auto;
+        }
+        @media (max-width: 1000px) {
+            .app-container { max-width: 90%; }
+        }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #e8e8e8;
+        }
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #1877f2;
+            border-left: 4px solid #1877f2;
+            padding-left: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .card-title span {
+            font-size: 20px;
+            transition: transform 0.2s;
+        }
+        .card-title.collapsed span {
+            transform: rotate(-90deg);
+        }
+        .card-content {
+            transition: max-height 0.3s ease-out;
+            overflow: hidden;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        button {
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-weight: 600;
+            transition: 0.2s;
+        }
+        .btn-primary { background: #1877f2; color: white; }
+        .btn-primary:hover { background: #0d5ab5; }
+        .btn-success { background: #42b72a; color: white; }
+        .btn-success:disabled { background: #a0d68b; cursor: not-allowed; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-outline { background: white; border: 1px solid #ced4da; color: #495057; }
+        .btn-outline:hover { background: #f8f9fa; }
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .flex-start { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        
+        /* Page list */
+        .page-list-container {
+            max-height: 320px;
+            overflow-y: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            background: #fff;
+        }
+        .page-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+        .page-item:hover { background: #f8f9ff; }
+        .page-checkbox { width: 18px; height: 18px; margin: 0; pointer-events: none; }
+        .page-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1px solid #dee2e6; }
+        .page-info { flex: 1; min-width: 0; }
+        .page-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .page-id { font-size: 11px; color: #6c757d; }
+        .badge { background: #e4e6eb; padding: 2px 6px; border-radius: 20px; font-size: 10px; margin-left: 6px; }
+        .search-box { margin-bottom: 12px; position: relative; }
+        .search-box input { padding-left: 32px; }
+        .search-box::before { content: "🔍"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 14px; color: #888; }
+        
+        /* Toast */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            min-width: 250px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideIn 0.3s ease;
+            font-size: 14px;
+        }
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
+        .toast.info { background: #17a2b8; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Modal chung */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .token-modal { width: 90%; max-width: 500px; }
+        .input-modal { width: 90%; max-width: 800px; max-height: 80vh; }
+        .posts-editor {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+        .post-item-editor {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+            position: relative;
+        }
+        .post-item-editor textarea { margin-bottom: 8px; }
+        .remove-post {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #dc3545;
+        }
+        .file-info {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .remove-file {
+            color: #dc3545;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .progress-modal { width: 80%; max-width: 900px; max-height: 80vh; }
+        .progress-log {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .progress-item {
+            padding: 10px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .progress-status.success { color: #28a745; font-weight: bold; }
+        .progress-status.error { color: #dc3545; font-weight: bold; }
+        .progress-status.pending { color: #ffc107; }
+        .view-page-btn {
+            background: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 12px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .context-menu {
+            position: fixed;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            min-width: 180px;
+            padding: 4px 0;
+            display: none;
+        }
+        .context-menu-item { padding: 8px 16px; cursor: pointer; }
+        .context-menu-item:hover { background: #f0f2f5; }
+        
+        /* Post card */
+        .post-card {
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        .post-card.selected {
+            border: 2px solid #1877f2;
+            background-color: #e7f3ff;
+        }
+        .post-media {
+            width: 100%;
+            max-height: 150px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin: 8px 0;
+        }
+        .note-text {
+            font-size: 11px;
+            color: #888;
+            margin-top: 4px;
+        }
+        #roleExtractedId {
+            font-size: 11px;
+            color: #1877f2;
+            margin-top: 4px;
+        }
+        .target-page-list {
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 8px;
+        }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div class="card" id="tokenCard">
+        <div class="card-title" id="tokenCardTitle">
+            🔑 Cấu hình Token
+            <span id="tokenToggleIcon">▼</span>
+        </div>
+        <div id="tokenContent" class="card-content" style="max-height: 0; overflow: hidden; padding: 0;">
+            <input type="password" id="tokenInput" placeholder="Dán Access Token" style="margin-bottom:12px;">
+            <div class="flex-between">
+                <button id="scanBtn" class="btn-primary">🔍 Quét Page</button>
+                <button id="manageTokenBtn" class="btn-secondary">⚙️ Quản lý token</button>
+            </div>
+            <div id="tokenStatus" class="status-text" style="margin-top:8px;"></div>
+        </div>
+    </div>
+
+    <div id="pagesSection" class="card" style="display:none;">
+        <div class="card-title">📌 Danh sách Page (<span id="pageCount">0</span>)</div>
+        <div class="search-box">
+            <input type="text" id="searchPages" placeholder="Tìm kiếm Page...">
+        </div>
+        <div id="pagesListContainer" class="page-list-container"></div>
+        <div class="flex-between" style="margin-top:12px;">
+            <label><input type="checkbox" id="selectAllPages"> Chọn tất cả</label>
+            <span class="tag">🖱️ Chuột phải vào Page để quét bài / thêm admin</span>
+        </div>
+    </div>
+
+    <div id="postActionCard" class="card" style="display:none;">
+        <button id="startPostBtn" class="btn-success" disabled style="width:100%; padding:12px;">🚀 BẮT ĐẦU ĐĂNG LOẠT</button>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+<div id="contextMenu" class="context-menu">
+    <div id="ctxScanPosts" class="context-menu-item">📄 Quét & xoá bài viết</div>
+    <div id="ctxAddRole" class="context-menu-item">👥 Thêm Admin/Editor</div>
+</div>
+
+<!-- Modal nhập bài đăng -->
+<div id="postInputModal" class="modal">
+    <div class="modal-content input-modal">
+        <div class="modal-header">
+            <h3>✏️ Nhập nội dung bài đăng</h3>
+            <button id="closeInputModal" class="btn-secondary">✖ Đóng</button>
+        </div>
+        <div class="flex-start" style="margin-bottom: 12px;">
+            <label>Kiểu delay:</label>
+            <select id="delayTypeModal">
+                <option value="fixed">Cố định (giây)</option>
+                <option value="random">Ngẫu nhiên (min - max)</option>
+            </select>
+            <div id="fixedDelayBoxModal">
+                <label>Delay (giây):</label>
+                <input type="number" id="delayFixedModal" value="15" style="width: 80px;">
+            </div>
+            <div id="randomDelayBoxModal" style="display: none;">
+                <label>Từ:</label>
+                <input type="number" id="delayMinModal" value="10" style="width: 70px;">
+                <label>Đến:</label>
+                <input type="number" id="delayMaxModal" value="30" style="width: 70px;">
+                <span>giây</span>
+            </div>
+        </div>
+        <div id="postsEditorModal" class="posts-editor"></div>
+        <button id="addPostModalBtn" class="btn-outline" style="width:100%; margin-bottom:12px;">+ Thêm bài viết</button>
+        <div class="flex-between">
+            <span>Số bài: <span id="postCountModal">0</span></span>
+            <button id="confirmPostBtn" class="btn-success">🚀 Bắt đầu đăng</button>
+        </div>
+    </div>
+</div>
+
+<div id="progressModal" class="modal">
+    <div class="modal-content progress-modal">
+        <div class="modal-header">
+            <h3>🚀 Tiến trình đăng bài</h3>
+            <button id="closeProgressModal" class="btn-secondary">Đóng</button>
+        </div>
+        <div id="progressLogModal" class="progress-log"></div>
+        <div class="flex-between" style="margin-top: 16px;">
+            <span id="progressSummaryModal"></span>
+        </div>
+    </div>
+</div>
+
+<div id="postsModal" class="modal">
+    <div class="modal-content" style="width:90%; height:90%; max-width:1400px;">
+        <div class="modal-header">
+            <h3 id="modalPageName">Bài viết của Page</h3>
+            <button id="closePostsModal" class="btn-secondary">✖ Đóng</button>
+        </div>
+        <div class="flex-between" style="margin-bottom: 12px; flex-wrap: wrap;">
+            <div>
+                <button id="selectAllPostsBtn" class="btn-primary">✅ Chọn tất cả</button>
+                <button id="deselectAllPostsBtn" class="btn-secondary">❌ Bỏ chọn tất cả</button>
+            </div>
+            <div>
+                <button id="copySelectedPostsBtn" class="btn-primary">📋 Copy bài đã chọn</button>
+                <button id="deleteSelectedPostsBtn" class="btn-danger">🗑 Xoá bài đã chọn (<span id="selectedCount">0</span>)</button>
+            </div>
+        </div>
+        <div id="postsGrid" style="flex:1; overflow:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px;"></div>
+        <div class="flex-between" style="margin-top:16px;">
+            <button id="loadMorePostsBtn" class="btn-secondary">📥 Tải thêm</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal thêm role -->
+<div id="roleModal" class="modal">
+    <div class="modal-content" style="width:90%; max-width:550px;">
+        <h3>➕ Thêm người vào Page</h3>
+        <div style="margin-bottom:12px;">
+            <label style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="roleAllPages"> Thêm cho <strong>tất cả Page đã chọn</strong> (hiện tại: <span id="roleSelectedPagesCount">0</span> page)
+            </label>
+        </div>
+        <div style="margin-bottom:12px;">
+            <label>Nhập User ID hoặc link Facebook:</label>
+            <input type="text" id="roleUserId" placeholder="Ví dụ: 1000123456789 hoặc https://facebook.com/zuck">
+            <div id="roleExtractedId"></div>
+        </div>
+        <div style="margin-bottom:12px;">
+            <label>Vai trò:</label>
+            <select id="roleSelect" style="width:100%;">
+                <option value="ADMIN">Admin</option>
+                <option value="EDITOR">Biên tập viên</option>
+                <option value="MODERATOR">Kiểm duyệt</option>
+                <option value="ADVERTISER">Quảng cáo</option>
+                <option value="ANALYST">Phân tích viên</option>
+            </select>
+        </div>
+        <div class="flex-between">
+            <button id="submitRoleBtn" class="btn-primary">➕ Thêm</button>
+            <button id="closeRoleModal" class="btn-secondary">Huỷ</button>
+        </div>
+        <div id="roleStatus" style="margin-top:12px; font-size:12px;"></div>
+    </div>
+</div>
+
+<!-- Modal copy bài viết -->
+<div id="copyModal" class="modal">
+    <div class="modal-content" style="width:90%; max-width:600px;">
+        <div class="modal-header">
+            <h3>📋 Copy bài viết</h3>
+            <button id="closeCopyModal" class="btn-secondary">✖</button>
+        </div>
+        <div style="margin-bottom:12px;">
+            <label>Chọn page đích (các page đã tick trong danh sách chính):</label>
+            <div id="copyTargetPagesList" class="target-page-list"></div>
+        </div>
+        <div style="margin-bottom:12px;">
+            <label>Delay giữa các bài copy (giây):</label>
+            <input type="number" id="copyDelaySec" value="10" min="3">
+        </div>
+        <div class="flex-between">
+            <button id="confirmCopyBtn" class="btn-primary">🚀 Bắt đầu copy</button>
+            <button id="cancelCopyBtn" class="btn-secondary">Huỷ</button>
+        </div>
+        <div id="copyStatus" style="margin-top:12px; font-size:12px;"></div>
+    </div>
+</div>
+
+<div id="tokenManageModal" class="modal">
+    <div class="modal-content token-modal">
+        <div class="modal-header">
+            <h3>🔐 Quản lý Token</h3>
+            <button id="closeTokenModal" class="btn-secondary">✖</button>
+        </div>
+        <div style="margin-bottom: 16px;">
+            <label>Token hiện tại:</label>
+            <div style="background:#f8f9fa; padding:10px; border-radius:8px; word-break:break-all; font-family:monospace; font-size:12px;" id="currentTokenDisplay"></div>
+        </div>
+        <div class="flex-between" style="gap:8px;">
+            <button id="resetTokenBtn" class="btn-primary">🔄 Reset token (60 ngày)</button>
+            <button id="copyTokenBtn" class="btn-secondary">📋 Copy token</button>
+            <button id="clearTokenBtn" class="btn-danger">🗑 Xóa token</button>
+        </div>
+        <div id="tokenManageStatus" style="margin-top:12px; font-size:12px; color:#6c757d;"></div>
+    </div>
+</div>
+
+<script src="DangBai.js"></script>
+</body>
+</html>

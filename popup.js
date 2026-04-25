@@ -124,4 +124,16 @@ chrome.storage.onChanged.addListener((changes) => {
     }
 });
 
+// ... giữ nguyên toàn bộ code cũ ...
+
+// Thêm sự kiện mở trang DangBai
+const openDangBaiBtn = document.getElementById("openDangBaiBtn");
+if (openDangBaiBtn) {
+    openDangBaiBtn.onclick = () => {
+        chrome.tabs.create({ url: chrome.runtime.getURL("DangBai.html") });
+    };
+}
+
+// ... phần còn lại giữ nguyên ...
+
 loadStatus();
