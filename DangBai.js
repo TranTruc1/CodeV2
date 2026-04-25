@@ -1,4 +1,4 @@
-// DangBai.js - Đã sửa lỗi quét bài viết, copy video, upload video
+// DangBai.js - Resumable upload video, copy video, sửa lỗi quét bài viết
 const TOKEN_KEY = 'fb_bulk_token';
 const TOKEN_EXPIRY_KEY = 'fb_bulk_token_expiry';
 const FB_APP_ID = '436239572033001';
@@ -150,7 +150,7 @@ async function clearStoredToken() {
     showToast('Đã xóa token khỏi bộ nhớ', 'info');
 }
 
-// ========== API cơ bản (tất cả dùng v19.0) ==========
+// ========== API cơ bản (v19.0) ==========
 async function exchangeToken(shortToken) {
     const url = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${shortToken}`;
     const resp = await fetch(url);
@@ -171,7 +171,6 @@ async function deletePost(postId, pageToken) {
     if (data.error) throw new Error(data.error.message);
     return data;
 }
-// SỬA: dùng attachments đầy đủ, không lồng phức tạp
 async function fetchPagePosts(pageId, pageToken, after = null) {
     let url = `https://graph.facebook.com/v19.0/${pageId}/posts?fields=id,message,created_time,attachments{media_type,media,url,target,subattachments},full_picture&limit=25&access_token=${pageToken}`;
     if (after) url += `&after=${after}`;
@@ -192,19 +191,57 @@ async function addRoleToPageWithUserToken(pageId, userId, role) {
     return data;
 }
 
-// ========== Upload video đơn giản ==========
+// ========== Resumable Upload Video (giống Facebook) ==========
 async function uploadVideoToPage(pageId, pageToken, videoFile, description) {
-    const form = new FormData();
-    form.append('description', description);
-    form.append('source', videoFile, videoFile.name);
-    form.append('access_token', pageToken);
-    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, {
+    const fileSize = videoFile.size;
+
+    // 1. Khởi tạo session
+    const initForm = new FormData();
+    initForm.append('upload_phase', 'start');
+    initForm.append('file_size', fileSize);
+    initForm.append('access_token', pageToken);
+    const initRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, {
         method: 'POST',
-        body: form
+        body: initForm
     });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    return data;
+    const initData = await initRes.json();
+    if (initData.error) throw new Error(`Khởi tạo upload: ${initData.error.message}`);
+    const uploadSessionId = initData.upload_session_id;
+
+    // 2. Upload từng chunk 5MB
+    const chunkSize = 5 * 1024 * 1024;
+    let startOffset = 0;
+    while (startOffset < fileSize) {
+        const end = Math.min(startOffset + chunkSize, fileSize);
+        const chunk = videoFile.slice(startOffset, end);
+        const chunkForm = new FormData();
+        chunkForm.append('upload_phase', 'transfer');
+        chunkForm.append('upload_session_id', uploadSessionId);
+        chunkForm.append('start_offset', startOffset);
+        chunkForm.append('video_file_chunk', chunk, `chunk_${startOffset}.part`);
+        chunkForm.append('access_token', pageToken);
+        const chunkRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, {
+            method: 'POST',
+            body: chunkForm
+        });
+        const chunkData = await chunkRes.json();
+        if (chunkData.error) throw new Error(`Chunk ${startOffset}: ${chunkData.error.message}`);
+        startOffset = end;
+    }
+
+    // 3. Kết thúc & đăng bài
+    const finishForm = new FormData();
+    finishForm.append('upload_phase', 'finish');
+    finishForm.append('upload_session_id', uploadSessionId);
+    finishForm.append('description', description);
+    finishForm.append('access_token', pageToken);
+    const finishRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, {
+        method: 'POST',
+        body: finishForm
+    });
+    const finishData = await finishRes.json();
+    if (finishData.error) throw new Error(`Hoàn tất upload: ${finishData.error.message}`);
+    return finishData;
 }
 
 // ========== Cross-post video ==========
@@ -307,25 +344,45 @@ async function getPostContentForCopy(postId, pageToken) {
     if (data.error) throw new Error(data.error.message);
     return data;
 }
+
+// Hàm downloadFile: ưu tiên dùng background script nếu có, nếu không thì fetch trực tiếp (có thể bị CORS với video)
 async function downloadFile(url) {
-    const resp = await fetch(url, { credentials: 'omit' });
-    if (!resp.ok) throw new Error(`Download fail: ${resp.status}`);
-    const blob = await resp.blob();
-    let filename = 'file';
-    const cd = resp.headers.get('content-disposition');
-    if (cd) {
-        const match = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (match && match[1]) filename = match[1].replace(/['"]/g, '');
+    // Nếu đang ở trong extension và có chrome.runtime.sendMessage, thử qua background
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({ action: 'downloadFile', url }, (response) => {
+                if (chrome.runtime.lastError) {
+                    // Không có background script hoặc lỗi, fallback fetch trực tiếp
+                    fallbackFetch(url).then(resolve).catch(reject);
+                    return;
+                }
+                if (response && response.error) {
+                    reject(new Error(response.error));
+                } else if (response && response.data) {
+                    const uint8 = new Uint8Array(response.data);
+                    const blob = new Blob([uint8]);
+                    let filename = url.split('/').pop().split('?')[0] || 'video.mp4';
+                    resolve(new File([blob], filename, { type: blob.type || 'video/mp4' }));
+                } else {
+                    reject(new Error('Dữ liệu không hợp lệ từ background'));
+                }
+            });
+        });
     } else {
-        const parts = url.split('/');
-        let last = parts.pop() || parts.pop();
-        if (last.includes('?')) last = last.split('?')[0];
-        if (last) filename = last;
+        return fallbackFetch(url);
     }
-    const ext = blob.type.split('/')[1] || 'bin';
-    if (!filename.includes('.')) filename += '.' + ext;
-    return new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+
+    async function fallbackFetch(u) {
+        const resp = await fetch(u, { credentials: 'omit' });
+        if (!resp.ok) throw new Error(`Download fail: ${resp.status}`);
+        const blob = await resp.blob();
+        let filename = u.split('/').pop().split('?')[0] || 'file';
+        const ext = blob.type.split('/')[1] || 'bin';
+        if (!filename.includes('.')) filename += '.' + ext;
+        return new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+    }
 }
+
 async function copyPostToPage(pageId, pageToken, originalPost) {
     let message = originalPost.message || '';
     let attachments = originalPost.attachments?.data || [];
@@ -339,30 +396,37 @@ async function copyPostToPage(pageId, pageToken, originalPost) {
         }
     }
 
+    // Thử crosspost video nếu có id
     if (videoId) {
         try {
             return await crossPostVideo(pageId, pageToken, videoId, message);
         } catch (e) {
+            // Crosspost lỗi -> nếu có source URL, tải video về và upload lại (resumable)
             if (videoSourceUrl) {
                 try {
                     const videoFile = await downloadFile(videoSourceUrl);
                     return await uploadVideoToPage(pageId, pageToken, videoFile, message);
                 } catch (downloadErr) {
-                    throw new Error(`Crosspost thất bại và không tải được video: ${downloadErr.message}`);
+                    console.warn('Không thể tải video, bỏ qua video:', downloadErr);
+                    showToast('Không thể sao chép video (tải về lỗi). Bài sẽ không có video.', 'error');
+                    // Không throw, tiếp tục xử lý ảnh (rơi xuống dưới)
                 }
             } else {
-                throw new Error(`Crosspost thất bại và không có source URL để tải video`);
+                showToast('Không thể sao chép video (thiếu source). Bài sẽ không có video.', 'error');
             }
         }
     } else if (videoSourceUrl) {
+        // Có source URL nhưng không có videoId, thử tải và upload
         try {
             const videoFile = await downloadFile(videoSourceUrl);
             return await uploadVideoToPage(pageId, pageToken, videoFile, message);
-        } catch (downloadErr) {
-            throw new Error(`Không tải được video: ${downloadErr.message}`);
+        } catch (e) {
+            console.warn('Không thể tải video:', e);
+            showToast('Không thể sao chép video. Bài sẽ không có video.', 'error');
         }
     }
 
+    // Xử lý ảnh và text (nếu có video nhưng không xử lý được, chỉ đăng phần còn lại)
     let filesToUpload = [];
     for (let attach of attachments) {
         if (attach.media_type === 'photo') {
@@ -408,11 +472,11 @@ async function copyPostToPage(pageId, pageToken, originalPost) {
         mediaIds.forEach(id => form.append('attached_media[]', JSON.stringify({ media_fbid: id })));
         const res = await fetch(`${base}${pageId}/feed`, { method: 'POST', body: form });
         const data = await res.json();
-        if (data.error) throw new Error(`Tạo album: ${data.error.message}`);
+        if (data.error) throw new Error(`Album: ${data.error.message}`);
     }
 }
 
-// ========== Các hàm render, event, ... ==========
+// ========== Các hàm render, event, ... (giữ nguyên toàn bộ) ==========
 function filterPages() {
     const keyword = searchPages.value.toLowerCase().trim();
     filteredPages = keyword ? pages.filter(p => p.name.toLowerCase().includes(keyword)) : [...pages];

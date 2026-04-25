@@ -17,7 +17,8 @@
 
   "host_permissions": [
     "https://*.facebook.com/*",
-    "https://graph.facebook.com/*"
+    "https://graph.facebook.com/*",
+    "https://*.fbcdn.net/*"        
   ],
 
   "action": {
