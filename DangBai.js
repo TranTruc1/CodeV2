@@ -1,11 +1,10 @@
-// DangBai.js - Hỗ trợ hashtag động, xáo trộn, thay thế {name_page}
-
+// DangBai.js - Đã sửa lỗi quét bài viết, copy video, upload video
 const TOKEN_KEY = 'fb_bulk_token';
 const TOKEN_EXPIRY_KEY = 'fb_bulk_token_expiry';
 const FB_APP_ID = '436239572033001';
 const FB_APP_SECRET = '46ba3ead34d90da033b0204ea6cf213d';
 
-// DOM elements (giữ nguyên như cũ, chỉ thêm một vài selector mới)
+// DOM elements
 const tokenInput = document.getElementById('tokenInput');
 const scanBtn = document.getElementById('scanBtn');
 const manageTokenBtn = document.getElementById('manageTokenBtn');
@@ -82,31 +81,10 @@ let allPosts = [];
 let selectedPostIds = new Set();
 let nextCursor = null;
 let isLoadingPosts = false;
-// Mỗi phần tử: { content: '', files: [], hashtag: '' }
-let postsData = [];
+let postsData = []; // { content, files, hashtag }
+let isTokenCollapsed = true;
 
-// Accordion token
-let tokenCollapsed = true;
-tokenContent.style.maxHeight = '0';
-tokenContent.style.overflow = 'hidden';
-tokenContent.style.padding = '0';
-tokenCardTitle.classList.add('collapsed');
-tokenCardTitle.onclick = () => {
-    tokenCollapsed = !tokenCollapsed;
-    if (tokenCollapsed) {
-        tokenContent.style.maxHeight = '0';
-        tokenContent.style.padding = '0';
-        tokenContent.style.overflow = 'hidden';
-        tokenCardTitle.classList.add('collapsed');
-    } else {
-        tokenContent.style.maxHeight = tokenContent.scrollHeight + 'px';
-        tokenContent.style.padding = '';
-        tokenContent.style.overflow = '';
-        tokenCardTitle.classList.remove('collapsed');
-    }
-};
-
-// Toast
+// ========== Helper ==========
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
@@ -119,8 +97,33 @@ function showToast(message, type = 'info') {
         setTimeout(() => toast.remove(), 300);
     }, 5000);
 }
+function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+function formatDate(isoString) { return isoString ? new Date(isoString).toLocaleString('vi-VN') : ''; }
+function getThumbnailUrl(attachments) {
+    if (!attachments?.data) return null;
+    const attach = attachments.data[0];
+    if (!attach) return null;
+    if (attach.media_type === 'photo' && attach.media?.image) return attach.media.image.src;
+    if (attach.media_type === 'video' && attach.media?.image) return attach.media.image.src;
+    if (attach.subattachments?.data?.length) {
+        const first = attach.subattachments.data[0];
+        if (first.media?.image) return first.media.image.src;
+    }
+    return null;
+}
 
-// Storage
+function isVideoFile(file) {
+    if (!file) return false;
+    if (file.type.startsWith('video/')) return true;
+    return /\.(mp4|mov|avi|mkv|wmv|flv|m4v|3gp)$/i.test(file.name);
+}
+function isImageFile(file) {
+    if (!file) return false;
+    if (file.type.startsWith('image/')) return true;
+    return /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(file.name);
+}
+
+// ========== Storage ==========
 function saveToken(token, expiresInSeconds = 5184000) {
     const expiry = Date.now() + expiresInSeconds * 1000;
     chrome.storage.local.set({ [TOKEN_KEY]: token, [TOKEN_EXPIRY_KEY]: expiry });
@@ -147,124 +150,30 @@ async function clearStoredToken() {
     showToast('Đã xóa token khỏi bộ nhớ', 'info');
 }
 
-// API calls
+// ========== API cơ bản (tất cả dùng v19.0) ==========
 async function exchangeToken(shortToken) {
-    const url = `https://graph.facebook.com/v20.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${shortToken}`;
+    const url = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${shortToken}`;
     const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
     return { token: data.access_token, expiresIn: data.expires_in || 5184000 };
 }
 async function fetchPages(token) {
-    const url = `https://graph.facebook.com/v20.0/me/accounts?fields=name,access_token,picture{url},id&limit=100&access_token=${token}`;
+    const url = `https://graph.facebook.com/v19.0/me/accounts?fields=name,access_token,picture{url},id&limit=100&access_token=${token}`;
     const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
     return data.data || [];
 }
-async function postToPageWithMedia(pageId, pageToken, post) { // post: { content, files, hashtag, pageName }
-    // Xử lý hashtag: tách chuỗi, xáo trộn, ghép lại
-    let finalContent = post.content || '';
-    let finalHashtag = '';
-    if (post.hashtag && post.hashtag.trim()) {
-        let tags = post.hashtag.split(/[\s,]+/).filter(t => t.trim().length > 0);
-        if (tags.length > 0) {
-            // Xáo trộn mảng tags
-            for (let i = tags.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [tags[i], tags[j]] = [tags[j], tags[i]];
-            }
-            finalHashtag = tags.join(' ');
-        }
-    }
-    // Thay thế {name_page} trong content và hashtag
-    if (post.pageName) {
-        finalContent = finalContent.replace(/\{name_page\}/g, post.pageName);
-        finalHashtag = finalHashtag.replace(/\{name_page\}/g, post.pageName);
-    }
-    // Ghép nội dung + hashtag
-    let fullMessage = finalContent;
-    if (finalHashtag) fullMessage += '\n\n' + finalHashtag;
-    fullMessage = fullMessage.trim();
-    
-    const imgs = (post.files || []).filter(f => f.type.startsWith('image/'));
-    const vids = (post.files || []).filter(f => f.type.startsWith('video/'));
-    const hasText = fullMessage.length > 0;
-
-    if (!hasText && (post.files || []).length === 0) {
-        throw new Error('Bài đăng trống: Hãy nhập nội dung hoặc chọn ảnh/video');
-    }
-    if (vids.length > 1) {
-        throw new Error('Facebook chỉ hỗ trợ 1 video mỗi bài đăng');
-    }
-
-    const toForm = (obj) => {
-        const fd = new FormData();
-        Object.entries(obj).forEach(([k, v]) => fd.append(k, v));
-        return fd;
-    };
-    const base = 'https://graph.facebook.com/v20.0/';
-
-    try {
-        if (vids.length) {
-            const res = await fetch(`${base}${pageId}/videos`, {
-                method: 'POST',
-                body: toForm({ description: fullMessage, source: vids[0], access_token: pageToken })
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(`Video: ${data.error.message}`);
-            return data;
-        } 
-        else if (imgs.length === 1) {
-            const res = await fetch(`${base}${pageId}/photos`, {
-                method: 'POST',
-                body: toForm({ caption: fullMessage, source: imgs[0], access_token: pageToken })
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(`Photo: ${data.error.message}`);
-            return data;
-        }
-        else if (imgs.length > 1) {
-            const mediaIds = [];
-            for (const img of imgs) {
-                const res = await fetch(`${base}${pageId}/photos`, {
-                    method: 'POST',
-                    body: toForm({ source: img, published: 'false', access_token: pageToken })
-                });
-                const data = await res.json();
-                if (data.error) throw new Error(`Upload media: ${data.error.message}`);
-                mediaIds.push(data.id);
-            }
-            const form = new FormData();
-            form.append('message', fullMessage);
-            form.append('access_token', pageToken);
-            mediaIds.forEach(id => form.append('attached_media[]', JSON.stringify({ media_fbid: id })));
-            const res = await fetch(`${base}${pageId}/feed`, { method: 'POST', body: form });
-            const data = await res.json();
-            if (data.error) throw new Error(`Album: ${data.error.message}`);
-            return data;
-        }
-        else {
-            const res = await fetch(`${base}${pageId}/feed`, {
-                method: 'POST',
-                body: toForm({ message: fullMessage, access_token: pageToken })
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(`Text post: ${data.error.message}`);
-            return data;
-        }
-    } catch (err) {
-        throw err;
-    }
-}
 async function deletePost(postId, pageToken) {
-    const resp = await fetch(`https://graph.facebook.com/v20.0/${postId}?access_token=${pageToken}`, { method: 'DELETE' });
+    const resp = await fetch(`https://graph.facebook.com/v19.0/${postId}?access_token=${pageToken}`, { method: 'DELETE' });
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
     return data;
 }
+// SỬA: dùng attachments đầy đủ, không lồng phức tạp
 async function fetchPagePosts(pageId, pageToken, after = null) {
-    let url = `https://graph.facebook.com/v20.0/${pageId}/posts?fields=id,message,created_time,attachments{media_type,media,url,subattachments{media,url}},full_picture&limit=25&access_token=${pageToken}`;
+    let url = `https://graph.facebook.com/v19.0/${pageId}/posts?fields=id,message,created_time,attachments{media_type,media,url,target,subattachments},full_picture&limit=25&access_token=${pageToken}`;
     if (after) url += `&after=${after}`;
     const resp = await fetch(url);
     const data = await resp.json();
@@ -272,7 +181,7 @@ async function fetchPagePosts(pageId, pageToken, after = null) {
     return data;
 }
 async function addRoleToPageWithUserToken(pageId, userId, role) {
-    const url = `https://graph.facebook.com/v20.0/${pageId}/roles`;
+    const url = `https://graph.facebook.com/v19.0/${pageId}/roles`;
     const form = new FormData();
     form.append('user', userId);
     form.append('role', role);
@@ -282,9 +191,117 @@ async function addRoleToPageWithUserToken(pageId, userId, role) {
     if (data.error) throw new Error(data.error.message);
     return data;
 }
-// Các hàm copy (giữ nguyên như cũ, nhưng có thể bổ sung xử lý hashtag nếu cần - tạm thời giữ)
+
+// ========== Upload video đơn giản ==========
+async function uploadVideoToPage(pageId, pageToken, videoFile, description) {
+    const form = new FormData();
+    form.append('description', description);
+    form.append('source', videoFile, videoFile.name);
+    form.append('access_token', pageToken);
+    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, {
+        method: 'POST',
+        body: form
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data;
+}
+
+// ========== Cross-post video ==========
+async function crossPostVideo(pageId, pageToken, videoId, description) {
+    let form = new FormData();
+    form.append('video_id', videoId);
+    form.append('description', description);
+    form.append('access_token', pageToken);
+    let resp = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, { method: 'POST', body: form });
+    let data = await resp.json();
+    if (!data.error) return data;
+
+    form = new FormData();
+    form.append('video_asset_id', videoId);
+    form.append('description', description);
+    form.append('access_token', pageToken);
+    resp = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, { method: 'POST', body: form });
+    data = await resp.json();
+    if (data.error) throw new Error(`Cross-post: ${data.error.message}`);
+    return data;
+}
+
+// ========== Post to Page (media + hashtag) ==========
+async function postToPageWithMedia(pageId, pageToken, post) {
+    const allFiles = post.files || [];
+    const imgs = allFiles.filter(f => isImageFile(f));
+    const vids = allFiles.filter(f => isVideoFile(f));
+    let finalContent = post.content || '';
+    let finalHashtag = '';
+    if (post.hashtag && post.hashtag.trim()) {
+        let tags = post.hashtag.split(/[\s,]+/).filter(t => t.trim().length > 0);
+        for (let i = tags.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [tags[i], tags[j]] = [tags[j], tags[i]];
+        }
+        finalHashtag = tags.join(' ');
+    }
+    if (post.pageName) {
+        finalContent = finalContent.replace(/\{name_page\}/g, post.pageName);
+        finalHashtag = finalHashtag.replace(/\{name_page\}/g, post.pageName);
+    }
+    let fullMessage = finalContent;
+    if (finalHashtag) fullMessage += '\n\n' + finalHashtag;
+    fullMessage = fullMessage.trim();
+
+    if (!fullMessage && allFiles.length === 0) throw new Error('Trống nội dung và media');
+    if (vids.length > 1) throw new Error('Chỉ hỗ trợ 1 video mỗi bài');
+
+    if (vids.length === 1) {
+        return await uploadVideoToPage(pageId, pageToken, vids[0], fullMessage);
+    }
+
+    if (imgs.length === 1) {
+        const form = new FormData();
+        form.append('caption', fullMessage);
+        form.append('source', imgs[0], imgs[0].name);
+        form.append('access_token', pageToken);
+        const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, { method: 'POST', body: form });
+        const data = await res.json();
+        if (data.error) throw new Error(`Photo: ${data.error.message}`);
+        return data;
+    }
+
+    if (imgs.length > 1) {
+        const mediaIds = [];
+        for (const img of imgs) {
+            const fd = new FormData();
+            fd.append('source', img, img.name);
+            fd.append('published', 'false');
+            fd.append('access_token', pageToken);
+            const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.error) throw new Error(`Upload media: ${data.error.message}`);
+            mediaIds.push(data.id);
+        }
+        const form = new FormData();
+        form.append('message', fullMessage);
+        form.append('access_token', pageToken);
+        mediaIds.forEach(id => form.append('attached_media[]', JSON.stringify({ media_fbid: id })));
+        const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, { method: 'POST', body: form });
+        const data = await res.json();
+        if (data.error) throw new Error(`Album: ${data.error.message}`);
+        return data;
+    }
+
+    const form = new FormData();
+    form.append('message', fullMessage);
+    form.append('access_token', pageToken);
+    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, { method: 'POST', body: form });
+    const data = await res.json();
+    if (data.error) throw new Error(`Text: ${data.error.message}`);
+    return data;
+}
+
+// ========== Copy bài viết ==========
 async function getPostContentForCopy(postId, pageToken) {
-    const url = `https://graph.facebook.com/v20.0/${postId}?fields=message,attachments{media_type,media,url,subattachments{media,url}}&access_token=${pageToken}`;
+    const url = `https://graph.facebook.com/v19.0/${postId}?fields=message,attachments{media_type,media,url,target,subattachments}&access_token=${pageToken}`;
     const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
@@ -292,16 +309,16 @@ async function getPostContentForCopy(postId, pageToken) {
 }
 async function downloadFile(url) {
     const resp = await fetch(url, { credentials: 'omit' });
-    if (!resp.ok) throw new Error(`Tải file thất bại: ${resp.status}`);
+    if (!resp.ok) throw new Error(`Download fail: ${resp.status}`);
     const blob = await resp.blob();
     let filename = 'file';
-    const contentDisposition = resp.headers.get('content-disposition');
-    if (contentDisposition) {
-        const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    const cd = resp.headers.get('content-disposition');
+    if (cd) {
+        const match = cd.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
         if (match && match[1]) filename = match[1].replace(/['"]/g, '');
     } else {
-        const urlParts = url.split('/');
-        let last = urlParts.pop() || urlParts.pop();
+        const parts = url.split('/');
+        let last = parts.pop() || parts.pop();
         if (last.includes('?')) last = last.split('?')[0];
         if (last) filename = last;
     }
@@ -312,6 +329,40 @@ async function downloadFile(url) {
 async function copyPostToPage(pageId, pageToken, originalPost) {
     let message = originalPost.message || '';
     let attachments = originalPost.attachments?.data || [];
+    let videoId = null;
+    let videoSourceUrl = null;
+    for (let attach of attachments) {
+        if (attach.media_type === 'video') {
+            videoId = attach.target?.id || attach.media?.id;
+            videoSourceUrl = attach.media?.source || attach.url;
+            if (videoId) break;
+        }
+    }
+
+    if (videoId) {
+        try {
+            return await crossPostVideo(pageId, pageToken, videoId, message);
+        } catch (e) {
+            if (videoSourceUrl) {
+                try {
+                    const videoFile = await downloadFile(videoSourceUrl);
+                    return await uploadVideoToPage(pageId, pageToken, videoFile, message);
+                } catch (downloadErr) {
+                    throw new Error(`Crosspost thất bại và không tải được video: ${downloadErr.message}`);
+                }
+            } else {
+                throw new Error(`Crosspost thất bại và không có source URL để tải video`);
+            }
+        }
+    } else if (videoSourceUrl) {
+        try {
+            const videoFile = await downloadFile(videoSourceUrl);
+            return await uploadVideoToPage(pageId, pageToken, videoFile, message);
+        } catch (downloadErr) {
+            throw new Error(`Không tải được video: ${downloadErr.message}`);
+        }
+    }
+
     let filesToUpload = [];
     for (let attach of attachments) {
         if (attach.media_type === 'photo') {
@@ -320,15 +371,7 @@ async function copyPostToPage(pageId, pageToken, originalPost) {
                 try {
                     const file = await downloadFile(imgSrc);
                     filesToUpload.push(file);
-                } catch (e) { console.warn('Download ảnh lỗi:', e); }
-            }
-        } else if (attach.media_type === 'video') {
-            const videoUrl = attach.url || attach.media?.source;
-            if (videoUrl) {
-                try {
-                    const file = await downloadFile(videoUrl);
-                    filesToUpload.push(file);
-                } catch (e) { console.warn('Download video lỗi:', e); }
+                } catch(e) { console.warn(e); }
             }
         } else if (attach.subattachments?.data) {
             for (let sub of attach.subattachments.data) {
@@ -337,33 +380,26 @@ async function copyPostToPage(pageId, pageToken, originalPost) {
                     try {
                         const file = await downloadFile(subSrc);
                         filesToUpload.push(file);
-                    } catch (e) { console.warn('Download subattachment lỗi:', e); }
+                    } catch(e) { console.warn(e); }
                 }
             }
         }
     }
-    // Đối với copy, tạm thời không xử lý hashtag động (giữ nguyên nội dung gốc)
     if (filesToUpload.length === 0) {
         await postToPageWithMedia(pageId, pageToken, { content: message, files: [] });
-    }
-    else if (filesToUpload.length === 1) {
+    } else if (filesToUpload.length === 1) {
         await postToPageWithMedia(pageId, pageToken, { content: message, files: filesToUpload });
-    }
-    else {
-        const toForm = (obj) => {
-            const fd = new FormData();
-            Object.entries(obj).forEach(([k,v]) => fd.append(k, v));
-            return fd;
-        };
-        const base = 'https://graph.facebook.com/v20.0/';
+    } else {
+        const base = 'https://graph.facebook.com/v19.0/';
         const mediaIds = [];
         for (let file of filesToUpload) {
-            const res = await fetch(`${base}${pageId}/photos`, {
-                method: 'POST',
-                body: toForm({ source: file, published: 'false', access_token: pageToken })
-            });
+            const fd = new FormData();
+            fd.append('source', file, file.name);
+            fd.append('published', 'false');
+            fd.append('access_token', pageToken);
+            const res = await fetch(`${base}${pageId}/photos`, { method: 'POST', body: fd });
             const data = await res.json();
-            if (data.error) throw new Error(`Upload media: ${data.error.message}`);
+            if (data.error) throw new Error(`Upload ảnh: ${data.error.message}`);
             mediaIds.push(data.id);
         }
         const form = new FormData();
@@ -372,27 +408,11 @@ async function copyPostToPage(pageId, pageToken, originalPost) {
         mediaIds.forEach(id => form.append('attached_media[]', JSON.stringify({ media_fbid: id })));
         const res = await fetch(`${base}${pageId}/feed`, { method: 'POST', body: form });
         const data = await res.json();
-        if (data.error) throw new Error(`Album: ${data.error.message}`);
+        if (data.error) throw new Error(`Tạo album: ${data.error.message}`);
     }
 }
 
-// Helper
-function getThumbnailUrl(attachments) {
-    if (!attachments?.data) return null;
-    const attach = attachments.data[0];
-    if (!attach) return null;
-    if (attach.media_type === 'photo' && attach.media?.image) return attach.media.image.src;
-    if (attach.media_type === 'video' && attach.media?.image) return attach.media.image.src;
-    if (attach.subattachments?.data?.length) {
-        const first = attach.subattachments.data[0];
-        if (first.media?.image) return first.media.image.src;
-    }
-    return null;
-}
-function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
-function formatDate(isoString) { return isoString ? new Date(isoString).toLocaleString('vi-VN') : ''; }
-
-// Render pages (giữ nguyên)
+// ========== Các hàm render, event, ... ==========
 function filterPages() {
     const keyword = searchPages.value.toLowerCase().trim();
     filteredPages = keyword ? pages.filter(p => p.name.toLowerCase().includes(keyword)) : [...pages];
@@ -477,7 +497,6 @@ selectAllPages.onchange = (e) => {
 };
 searchPages.oninput = filterPages;
 
-// Modal nhập bài (có hashtag)
 function renderPostsEditorModal() {
     postsEditorModal.innerHTML = postsData.map((item, idx) => `
         <div class="post-item-editor" data-idx="${idx}">
@@ -490,7 +509,6 @@ function renderPostsEditorModal() {
             </div>
         </div>
     `).join('');
-    // Gắn sự kiện
     document.querySelectorAll('.post-content-modal').forEach(ta => {
         ta.oninput = (e) => {
             const idx = parseInt(e.target.dataset.idx);
@@ -537,6 +555,12 @@ addPostModalBtn.onclick = () => {
     renderPostsEditorModal();
     showToast('Đã thêm bài viết', 'success');
 };
+function getDelayMs() {
+    if (delayTypeModal.value === 'fixed') return parseInt(delayFixedModal.value) * 1000;
+    const min = parseInt(delayMinModal.value);
+    const max = parseInt(delayMaxModal.value);
+    return (Math.floor(Math.random() * (max - min + 1)) + min) * 1000;
+}
 delayTypeModal.onchange = () => {
     if (delayTypeModal.value === 'fixed') {
         fixedDelayBoxModal.style.display = 'block';
@@ -546,29 +570,19 @@ delayTypeModal.onchange = () => {
         randomDelayBoxModal.style.display = 'block';
     }
 };
-function getDelayMs() {
-    if (delayTypeModal.value === 'fixed') return parseInt(delayFixedModal.value) * 1000;
-    const min = parseInt(delayMinModal.value);
-    const max = parseInt(delayMaxModal.value);
-    return (Math.floor(Math.random() * (max - min + 1)) + min) * 1000;
-}
 
-// Đăng bài (có truyền thêm pageName)
 async function startPostingFromModal() {
     const selectedPages = pages.filter(p => selectedPageIds.has(p.id));
     if (!selectedPages.length) { showToast('Chọn ít nhất 1 Page', 'error'); return; }
     const validPosts = postsData.filter(p => p.content.trim().length > 0 || (p.files && p.files.length > 0));
-    if (validPosts.length === 0) { showToast('Nhập nội dung hoặc chọn ảnh/video cho ít nhất 1 bài viết', 'error'); return; }
-    
+    if (validPosts.length === 0) { showToast('Nhập nội dung hoặc chọn ảnh/video', 'error'); return; }
     postInputModal.style.display = 'none';
     progressModal.style.display = 'flex';
     progressLogModal.innerHTML = '';
     progressSummaryModal.innerText = '';
-    
     let completed = 0;
     const totalSteps = selectedPages.length * validPosts.length;
     let successCount = 0;
-    
     for (let pIdx = 0; pIdx < selectedPages.length; pIdx++) {
         const page = selectedPages[pIdx];
         for (let cIdx = 0; cIdx < validPosts.length; cIdx++) {
@@ -578,15 +592,12 @@ async function startPostingFromModal() {
             itemDiv.innerHTML = `<strong>${escapeHtml(page.name)}</strong> - Bài ${cIdx+1}<br><span class="progress-status pending">⏳ Đang đăng...</span>`;
             progressLogModal.appendChild(itemDiv);
             progressLogModal.scrollTop = progressLogModal.scrollHeight;
-            
-            // Tạo bản sao của post với pageName để xử lý hashtag và thay thế tên page
             const postForPage = {
                 content: post.content,
                 files: post.files,
                 hashtag: post.hashtag,
                 pageName: page.name
             };
-            
             try {
                 const res = await postToPageWithMedia(page.id, page.access_token, postForPage);
                 successCount++;
@@ -601,7 +612,6 @@ async function startPostingFromModal() {
             }
             completed++;
             progressSummaryModal.innerText = `Đã hoàn thành ${completed}/${totalSteps} bài`;
-            
             if (!(pIdx === selectedPages.length-1 && cIdx === validPosts.length-1)) {
                 await new Promise(r => setTimeout(r, getDelayMs()));
             }
@@ -614,10 +624,6 @@ async function startPostingFromModal() {
     showToast('Đăng bài hoàn tất!', 'success');
 }
 
-// Quét page, refresh token, quản lý token, copy, role... (giữ nguyên từ code trước, không thay đổi)
-// ... (phần còn lại giữ nguyên như đã có, chỉ cần copy tiếp từ dưới đây)
-
-// Quét page
 async function scanPages(token) {
     if (!token) { showToast('Nhập token!', 'error'); return; }
     showToast('Đang quét Page...', 'info');
@@ -633,7 +639,6 @@ async function scanPages(token) {
         showToast(err.message, 'error');
     }
 }
-
 async function refreshToken() {
     let shortToken = tokenInput.value.trim();
     if (!shortToken) {
@@ -650,18 +655,15 @@ async function refreshToken() {
         saveToken(token, expiresIn);
         tokenStatus.innerHTML = `<span class="tag tag-success">✅ Token mới (${Math.floor(expiresIn/86400)} ngày)</span>`;
         await scanPages(token);
-        showToast('Token đã được reset thành công!', 'success');
+        showToast('Token đã reset!', 'success');
         if (tokenManageModal.style.display === 'flex') updateTokenModalDisplay(token);
     } catch (err) { showToast(err.message, 'error'); }
 }
-
 function updateTokenModalDisplay(token) {
     if (token) {
         const masked = token.substring(0, 10) + '...' + token.substring(token.length-10);
         currentTokenDisplay.innerText = masked;
-    } else {
-        currentTokenDisplay.innerText = 'Chưa có token';
-    }
+    } else currentTokenDisplay.innerText = 'Chưa có token';
 }
 manageTokenBtn.onclick = async () => {
     const stored = await getStoredToken();
@@ -673,7 +675,7 @@ closeTokenModal.onclick = () => tokenManageModal.style.display = 'none';
 resetTokenBtn.onclick = async () => {
     await refreshToken();
     tokenManageStatus.innerText = 'Đã reset token mới!';
-    setTimeout(() => { tokenManageStatus.innerText = ''; }, 3000);
+    setTimeout(() => tokenManageStatus.innerText = '', 3000);
 };
 copyTokenBtn.onclick = async () => {
     const stored = await getStoredToken();
@@ -682,9 +684,7 @@ copyTokenBtn.onclick = async () => {
         await navigator.clipboard.writeText(token);
         showToast('Đã copy token', 'success');
         tokenManageStatus.innerText = 'Đã copy!';
-    } else {
-        showToast('Không có token', 'error');
-    }
+    } else showToast('Không có token', 'error');
 };
 clearTokenBtn.onclick = async () => {
     if (confirm('Xóa token khỏi bộ nhớ?')) {
@@ -693,21 +693,11 @@ clearTokenBtn.onclick = async () => {
         showToast('Đã xóa token', 'info');
     }
 };
-window.onclick = e => {
-    if (e.target === tokenManageModal) tokenManageModal.style.display = 'none';
-};
 
-// Copy bài viết (giữ nguyên)
 copySelectedPostsBtn.onclick = () => {
-    if (selectedPostIds.size === 0) {
-        showToast('Chọn ít nhất 1 bài viết để copy', 'error');
-        return;
-    }
+    if (selectedPostIds.size === 0) { showToast('Chọn ít nhất 1 bài viết', 'error'); return; }
     const targetPages = pages.filter(p => selectedPageIds.has(p.id));
-    if (targetPages.length === 0) {
-        showToast('Vui lòng chọn page đích trong danh sách chính trước', 'error');
-        return;
-    }
+    if (targetPages.length === 0) { showToast('Chọn page đích', 'error'); return; }
     copyTargetPagesList.innerHTML = targetPages.map(p => `
         <label style="display:block; padding:6px;">
             <input type="checkbox" class="target-page-cb" value="${p.id}" data-name="${escapeHtml(p.name)}" data-token="${p.access_token}" checked> ${escapeHtml(p.name)}
@@ -720,19 +710,12 @@ cancelCopyBtn.onclick = () => copyModal.style.display = 'none';
 confirmCopyBtn.onclick = async () => {
     const selectedTargets = [];
     document.querySelectorAll('.target-page-cb:checked').forEach(cb => {
-        selectedTargets.push({
-            id: cb.value,
-            name: cb.dataset.name,
-            access_token: cb.dataset.token
-        });
+        selectedTargets.push({ id: cb.value, name: cb.dataset.name, access_token: cb.dataset.token });
     });
-    if (selectedTargets.length === 0) {
-        showToast('Chọn ít nhất 1 page đích', 'error');
-        return;
-    }
+    if (selectedTargets.length === 0) { showToast('Chọn ít nhất 1 page đích', 'error'); return; }
     const selectedPosts = allPosts.filter(p => selectedPostIds.has(p.id));
     selectedPosts.sort((a, b) => new Date(a.created_time) - new Date(b.created_time));
-    const delaySeconds = parseInt(copyDelaySec.value) || 10;
+    const delaySec = parseInt(copyDelaySec.value) || 10;
     copyModal.style.display = 'none';
     progressModal.style.display = 'flex';
     progressLogModal.innerHTML = '';
@@ -751,202 +734,73 @@ confirmCopyBtn.onclick = async () => {
                 const fullPost = await getPostContentForCopy(post.id, currentPostsPageObj.access_token);
                 await copyPostToPage(t.id, t.access_token, fullPost);
                 successCount++;
-                itemDiv.innerHTML = `<strong>${t.name}</strong> - Copy bài thành công<br><span class="progress-status success">✅ Thành công</span>`;
+                itemDiv.innerHTML = `<strong>${t.name}</strong> - Copy thành công<br><span class="progress-status success">✅ Thành công</span>`;
             } catch (err) {
-                itemDiv.innerHTML = `<strong>${t.name}</strong> - Copy bài thất bại<br><span class="progress-status error">❌ Lỗi: ${err.message}</span>`;
+                itemDiv.innerHTML = `<strong>${t.name}</strong> - Copy thất bại<br><span class="progress-status error">❌ Lỗi: ${err.message}</span>`;
             }
             completed++;
             progressSummaryModal.innerText = `Đã hoàn thành ${completed}/${total} bài copy`;
-            if (completed < total) await new Promise(r => setTimeout(r, delaySeconds * 1000));
+            if (completed < total) await new Promise(r => setTimeout(r, delaySec * 1000));
         }
     }
     progressSummaryModal.innerHTML += ` ✅ Hoàn tất! Thành công: ${successCount}/${total}`;
     showToast('Copy hoàn tất!', 'success');
 };
 
-// Thêm role (giữ nguyên)
 async function addRole() {
     const userIdInput = roleUserId.value.trim();
-    if (!userIdInput) { showToast('Nhập User ID hoặc link Facebook', 'error'); return; }
-    let extracted = extractUserIdFromInput(userIdInput);
-    if (!extracted) { showToast('Không thể nhận diện User ID hoặc link', 'error'); return; }
+    if (!userIdInput) { showToast('Nhập User ID hoặc link', 'error'); return; }
+    let extracted = (() => {
+        let input = userIdInput.trim();
+        if (/^\d+$/.test(input)) return input;
+        let match = input.match(/facebook\.com\/([^\/?]+)/);
+        if (match && match[1] && !match[1].includes('profile.php')) return match[1];
+        match = input.match(/id=(\d+)/);
+        return match ? match[1] : null;
+    })();
+    if (!extracted) { showToast('Không nhận diện được ID', 'error'); return; }
     let targetUserId = extracted;
     if (!/^\d+$/.test(extracted)) {
-        showToast('Đang lấy ID từ username...', 'info');
+        showToast('Đang lấy ID...', 'info');
         try {
-            targetUserId = await resolveUserId(extracted, userAccessToken);
+            const url = `https://graph.facebook.com/v19.0/${extracted}?access_token=${userAccessToken}&fields=id`;
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error.message);
+            targetUserId = data.id;
             roleExtractedId.innerText = `✅ ID: ${targetUserId}`;
         } catch (err) {
             showToast(err.message, 'error');
             return;
         }
-    } else {
-        roleExtractedId.innerText = `✅ ID: ${targetUserId}`;
-    }
+    } else roleExtractedId.innerText = `✅ ID: ${targetUserId}`;
     const role = roleSelect.value;
     const addToAllChecked = roleAllPages.checked;
     let targetPages = [];
     if (addToAllChecked) {
         targetPages = pages.filter(p => selectedPageIds.has(p.id));
-        if (targetPages.length === 0) {
-            showToast('Không có page nào được chọn! Hãy tick chọn page trước.', 'error');
-            return;
-        }
+        if (targetPages.length === 0) { showToast('Chưa chọn page nào', 'error'); return; }
     } else {
-        if (!currentContextPage) {
-            showToast('Không xác định page. Hãy chuột phải vào page cần thêm.', 'error');
-            return;
-        }
+        if (!currentContextPage) { showToast('Chuột phải vào page', 'error'); return; }
         targetPages = [currentContextPage];
     }
     showToast(`Đang thêm cho ${targetPages.length} page...`, 'info');
-    let successCount = 0;
-    let errorList = [];
-    for (const page of targetPages) {
+    let successCount = 0, errors = [];
+    for (let page of targetPages) {
         try {
             await addRoleToPageWithUserToken(page.id, targetUserId, role);
             successCount++;
-            showToast(`✅ Đã thêm ${targetUserId} vào ${page.name} với vai trò ${role}`, 'success');
+            showToast(`✅ Đã thêm vào ${page.name}`, 'success');
         } catch (err) {
-            errorList.push(`${page.name}: ${err.message}`);
-            showToast(`❌ Lỗi ${page.name}: ${err.message}`, 'error');
+            errors.push(`${page.name}: ${err.message}`);
         }
         if (targetPages.length > 1) await new Promise(r => setTimeout(r, 500));
     }
-    if (errorList.length) {
-        roleStatus.innerHTML = `⚠️ Lỗi: ${errorList.join('; ')}`;
-    } else {
-        roleStatus.innerHTML = `✅ Thành công ${successCount}/${targetPages.length} page`;
-    }
-    setTimeout(() => { roleStatus.innerHTML = ''; }, 5000);
+    if (errors.length) roleStatus.innerHTML = `⚠️ Lỗi: ${errors.join('; ')}`;
+    else roleStatus.innerHTML = `✅ Thành công ${successCount}/${targetPages.length}`;
+    setTimeout(() => roleStatus.innerHTML = '', 5000);
     roleModal.style.display = 'none';
 }
-function extractUserIdFromInput(input) {
-    input = input.trim();
-    if (!input) return null;
-    if (/^\d+$/.test(input)) return input;
-    let match;
-    match = input.match(/facebook\.com\/([^\/?]+)/);
-    if (match && match[1] && !match[1].includes('profile.php')) {
-        return match[1];
-    }
-    match = input.match(/id=(\d+)/);
-    if (match) return match[1];
-    return null;
-}
-async function resolveUserId(identifier, token) {
-    if (/^\d+$/.test(identifier)) return identifier;
-    try {
-        const url = `https://graph.facebook.com/v20.0/${identifier}?access_token=${token}&fields=id`;
-        const resp = await fetch(url);
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error.message);
-        return data.id;
-    } catch (err) {
-        throw new Error(`Không thể lấy ID từ ${identifier}`);
-    }
-}
-
-// Khởi tạo
-async function init() {
-    tokenContent.style.maxHeight = '0';
-    tokenContent.style.overflow = 'hidden';
-    tokenContent.style.padding = '0';
-    tokenCardTitle.classList.add('collapsed');
-    tokenCollapsed = true;
-    const stored = await getStoredToken();
-    if (stored.valid) {
-        userAccessToken = stored.token;
-        currentToken = stored.token;
-        tokenInput.value = stored.token;
-        tokenStatus.innerHTML = `<span class="tag tag-success">✅ Token còn ${stored.daysLeft} ngày</span>`;
-        if (stored.daysLeft < 20) tokenStatus.innerHTML += ` <span class="tag tag-warning">Sắp hết hạn</span>`;
-        await scanPages(stored.token);
-    } else {
-        tokenStatus.innerHTML = `<span class="tag tag-warning">⚠️ Chưa có token hoặc hết hạn</span>`;
-    }
-    postsData = [{ content: '', files: [], hashtag: '' }];
-    renderPostsEditorModal();
-}
-
-// Event listeners chính
-scanBtn.onclick = () => {
-    const t = tokenInput.value.trim();
-    if (t) {
-        currentToken = t;
-        userAccessToken = t;
-        scanPages(t);
-        saveToken(t, 5184000);
-        tokenStatus.innerHTML = '<span class="tag tag-success">✅ Đã lưu token</span>';
-    } else showToast('Nhập token', 'error');
-};
-startPostBtn.onclick = () => {
-    if (selectedPageIds.size === 0) { showToast('Chọn ít nhất 1 Page', 'error'); return; }
-    postsData = [{ content: '', files: [], hashtag: '' }];
-    renderPostsEditorModal();
-    postInputModal.style.display = 'flex';
-};
-closeInputModal.onclick = () => postInputModal.style.display = 'none';
-confirmPostBtn.onclick = startPostingFromModal;
-closeProgressModal.onclick = () => progressModal.style.display = 'none';
-window.onclick = e => {
-    if (e.target === postInputModal) postInputModal.style.display = 'none';
-    if (e.target === progressModal) progressModal.style.display = 'none';
-    if (e.target === postsModal) postsModal.style.display = 'none';
-    if (e.target === roleModal) roleModal.style.display = 'none';
-    if (e.target === copyModal) copyModal.style.display = 'none';
-    if (e.target !== contextMenu && !contextMenu.contains(e.target)) contextMenu.style.display = 'none';
-};
-
-ctxScanPosts.onclick = () => {
-    contextMenu.style.display = 'none';
-    if (currentContextPage) {
-        currentPostsPageObj = currentContextPage;
-        modalPageName.innerText = `Bài viết của ${currentContextPage.name}`;
-        allPosts = [];
-        selectedPostIds.clear();
-        postsModal.style.display = 'flex';
-        loadPosts(currentContextPage, null, true);
-    }
-};
-ctxAddRole.onclick = () => {
-    contextMenu.style.display = 'none';
-    if (currentContextPage) {
-        roleUserId.value = '';
-        roleExtractedId.innerText = '';
-        roleStatus.innerHTML = '';
-        const selectedCount = selectedPageIds.size;
-        roleSelectedPagesCount.innerText = selectedCount;
-        if (selectedCount > 1) {
-            roleAllPages.checked = true;
-            roleAllPages.disabled = false;
-        } else if (selectedCount === 1) {
-            roleAllPages.checked = false;
-            roleAllPages.disabled = false;
-        } else {
-            roleAllPages.checked = false;
-            roleAllPages.disabled = true;
-        }
-        roleModal.style.display = 'flex';
-    }
-};
-closePostsModal.onclick = () => postsModal.style.display = 'none';
-closeRoleModal.onclick = () => roleModal.style.display = 'none';
-loadMorePostsBtn.onclick = () => { if (nextCursor && currentPostsPageObj) loadPosts(currentPostsPageObj, nextCursor, false); else showToast('Đã hết bài', 'error'); };
-deleteSelectedPostsBtn.onclick = deleteSelectedPosts;
-submitRoleBtn.onclick = addRole;
-selectAllPostsBtn.onclick = () => {
-    allPosts.forEach(post => selectedPostIds.add(post.id));
-    renderPostsGrid();
-    updateSelectedCount();
-    showToast(`Đã chọn ${selectedPostIds.size} bài`, 'success');
-};
-deselectAllPostsBtn.onclick = () => {
-    selectedPostIds.clear();
-    renderPostsGrid();
-    updateSelectedCount();
-    showToast('Đã bỏ chọn tất cả', 'info');
-};
 
 async function loadPosts(page, after, reset = true) {
     if (!page || isLoadingPosts) return;
@@ -1007,5 +861,110 @@ async function deleteSelectedPosts() {
     updateSelectedCount();
     showToast('Đã xoá các bài được chọn', 'success');
 }
+
+function updateTokenToggleIcon() {
+    const icon = document.getElementById('tokenToggleIcon');
+    if (isTokenCollapsed) {
+        tokenContent.style.maxHeight = '0';
+        tokenContent.style.overflow = 'hidden';
+        tokenContent.style.padding = '0';
+        tokenCardTitle.classList.add('collapsed');
+        if (icon) icon.textContent = '▼';
+    } else {
+        tokenContent.style.maxHeight = tokenContent.scrollHeight + 'px';
+        tokenContent.style.overflow = 'visible';
+        tokenContent.style.padding = '16px';
+        tokenCardTitle.classList.remove('collapsed');
+        if (icon) icon.textContent = '▲';
+    }
+}
+tokenCardTitle.addEventListener('click', () => {
+    isTokenCollapsed = !isTokenCollapsed;
+    updateTokenToggleIcon();
+});
+
+async function init() {
+    isTokenCollapsed = true;
+    updateTokenToggleIcon();
+
+    const stored = await getStoredToken();
+    if (stored.valid) {
+        userAccessToken = stored.token;
+        currentToken = stored.token;
+        tokenInput.value = stored.token;
+        tokenStatus.innerHTML = `<span class="tag tag-success">✅ Token còn ${stored.daysLeft} ngày</span>`;
+        if (stored.daysLeft < 20) tokenStatus.innerHTML += ` <span class="tag tag-warning">Sắp hết hạn</span>`;
+        await scanPages(stored.token);
+    } else {
+        tokenStatus.innerHTML = `<span class="tag tag-warning">⚠️ Chưa có token hoặc hết hạn</span>`;
+    }
+    postsData = [{ content: '', files: [], hashtag: '' }];
+    renderPostsEditorModal();
+}
+
+scanBtn.onclick = () => {
+    const t = tokenInput.value.trim();
+    if (t) { currentToken = t; userAccessToken = t; scanPages(t); saveToken(t, 5184000); tokenStatus.innerHTML = '<span class="tag tag-success">✅ Đã lưu token</span>'; }
+    else showToast('Nhập token', 'error');
+};
+startPostBtn.onclick = () => {
+    if (selectedPageIds.size === 0) { showToast('Chọn ít nhất 1 Page', 'error'); return; }
+    postsData = [{ content: '', files: [], hashtag: '' }];
+    renderPostsEditorModal();
+    postInputModal.style.display = 'flex';
+};
+closeInputModal.onclick = () => postInputModal.style.display = 'none';
+confirmPostBtn.onclick = startPostingFromModal;
+closeProgressModal.onclick = () => progressModal.style.display = 'none';
+ctxScanPosts.onclick = () => {
+    contextMenu.style.display = 'none';
+    if (currentContextPage) {
+        currentPostsPageObj = currentContextPage;
+        modalPageName.innerText = `Bài viết của ${currentContextPage.name}`;
+        allPosts = [];
+        selectedPostIds.clear();
+        postsModal.style.display = 'flex';
+        loadPosts(currentContextPage, null, true);
+    }
+};
+ctxAddRole.onclick = () => {
+    contextMenu.style.display = 'none';
+    if (currentContextPage) {
+        roleUserId.value = '';
+        roleExtractedId.innerText = '';
+        roleStatus.innerHTML = '';
+        const selectedCount = selectedPageIds.size;
+        roleSelectedPagesCount.innerText = selectedCount;
+        if (selectedCount > 1) { roleAllPages.checked = true; roleAllPages.disabled = false; }
+        else if (selectedCount === 1) { roleAllPages.checked = false; roleAllPages.disabled = false; }
+        else { roleAllPages.checked = false; roleAllPages.disabled = true; }
+        roleModal.style.display = 'flex';
+    }
+};
+closePostsModal.onclick = () => postsModal.style.display = 'none';
+closeRoleModal.onclick = () => roleModal.style.display = 'none';
+loadMorePostsBtn.onclick = () => { if (nextCursor && currentPostsPageObj) loadPosts(currentPostsPageObj, nextCursor, false); else showToast('Đã hết bài', 'error'); };
+deleteSelectedPostsBtn.onclick = deleteSelectedPosts;
+submitRoleBtn.onclick = addRole;
+selectAllPostsBtn.onclick = () => {
+    allPosts.forEach(post => selectedPostIds.add(post.id));
+    renderPostsGrid();
+    updateSelectedCount();
+    showToast(`Đã chọn ${selectedPostIds.size} bài`, 'success');
+};
+deselectAllPostsBtn.onclick = () => {
+    selectedPostIds.clear();
+    renderPostsGrid();
+    updateSelectedCount();
+    showToast('Đã bỏ chọn tất cả', 'info');
+};
+window.onclick = e => {
+    if (e.target === postInputModal) postInputModal.style.display = 'none';
+    if (e.target === progressModal) progressModal.style.display = 'none';
+    if (e.target === postsModal) postsModal.style.display = 'none';
+    if (e.target === roleModal) roleModal.style.display = 'none';
+    if (e.target === copyModal) copyModal.style.display = 'none';
+    if (e.target !== contextMenu && !contextMenu.contains(e.target)) contextMenu.style.display = 'none';
+};
 
 init();
