@@ -44,7 +44,6 @@ async function loadData() {
         updateRememberedTags();
         updateRememberListUI();
 
-        document.title = `Quản Lý Fanpage Facebook`;
     } catch (error) {
         showToast("Lỗi load dữ liệu!", "error");
     }
