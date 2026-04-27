@@ -1,6 +1,9 @@
 // DangBai.js - Resumable upload video, copy video, sửa lỗi quét bài viết
+// Đã sửa: lưu pages vào storage, chỉ load 1 lần, tự động reset token khi dưới 35 ngày
+
 const TOKEN_KEY = 'fb_bulk_token';
 const TOKEN_EXPIRY_KEY = 'fb_bulk_token_expiry';
+const PAGES_DATA_KEY = 'fb_pages_data';
 const FB_APP_ID = '436239572033001';
 const FB_APP_SECRET = '46ba3ead34d90da033b0204ea6cf213d';
 
@@ -148,6 +151,21 @@ async function clearStoredToken() {
     tokenInput.value = '';
     tokenStatus.innerHTML = '<span class="tag tag-warning">⚠️ Đã xóa token</span>';
     showToast('Đã xóa token khỏi bộ nhớ', 'info');
+}
+
+// Lưu danh sách pages vào storage
+async function savePagesToStorage(pagesArray) {
+    return new Promise(resolve => {
+        chrome.storage.local.set({ [PAGES_DATA_KEY]: pagesArray }, resolve);
+    });
+}
+// Lấy danh sách pages từ storage
+async function getStoredPages() {
+    return new Promise(resolve => {
+        chrome.storage.local.get([PAGES_DATA_KEY], res => {
+            resolve(res[PAGES_DATA_KEY] || null);
+        });
+    });
 }
 
 // ========== API cơ bản (v19.0) ==========
@@ -688,6 +706,7 @@ async function startPostingFromModal() {
     showToast('Đăng bài hoàn tất!', 'success');
 }
 
+// Hàm quét pages và lưu vào storage
 async function scanPages(token) {
     if (!token) { showToast('Nhập token!', 'error'); return; }
     showToast('Đang quét Page...', 'info');
@@ -698,12 +717,16 @@ async function scanPages(token) {
         renderPageList();
         pagesSection.style.display = 'block';
         document.getElementById('postActionCard').style.display = 'block';
+        // Lưu pages vào storage
+        await savePagesToStorage(pages);
         showToast(`Quét thành công! ${pages.length} Page`, 'success');
     } catch (err) {
         showToast(err.message, 'error');
     }
 }
-async function refreshToken() {
+
+// Hàm refresh token (có thể tùy chọn không tự động scan pages)
+async function refreshToken(shouldScan = true) {
     let shortToken = tokenInput.value.trim();
     if (!shortToken) {
         const stored = await getStoredToken();
@@ -718,11 +741,36 @@ async function refreshToken() {
         tokenInput.value = token;
         saveToken(token, expiresIn);
         tokenStatus.innerHTML = `<span class="tag tag-success">✅ Token mới (${Math.floor(expiresIn/86400)} ngày)</span>`;
-        await scanPages(token);
-        showToast('Token đã reset!', 'success');
+        if (shouldScan) {
+            await scanPages(token);
+        } else {
+            // Chỉ cập nhật token, không quét lại pages
+            showToast('Token đã được làm mới!', 'success');
+        }
         if (tokenManageModal.style.display === 'flex') updateTokenModalDisplay(token);
-    } catch (err) { showToast(err.message, 'error'); }
+        return { token, expiresIn };
+    } catch (err) {
+        showToast(err.message, 'error');
+        throw err;
+    }
 }
+
+// Tự động refresh token nếu dưới 35 ngày
+async function autoRefreshTokenIfNeeded(tokenObj) {
+    if (!tokenObj || !tokenObj.valid) return null;
+    if (tokenObj.daysLeft < 35) {
+        showToast(`Token còn ${tokenObj.daysLeft} ngày, tự động reset lên 60 ngày...`, 'info');
+        try {
+            const result = await refreshToken(false); // không scan pages
+            return result.token;
+        } catch (e) {
+            console.error('Auto refresh token thất bại:', e);
+            return tokenObj.token; // vẫn dùng token cũ
+        }
+    }
+    return tokenObj.token;
+}
+
 function updateTokenModalDisplay(token) {
     if (token) {
         const masked = token.substring(0, 10) + '...' + token.substring(token.length-10);
@@ -737,8 +785,8 @@ manageTokenBtn.onclick = async () => {
 };
 closeTokenModal.onclick = () => tokenManageModal.style.display = 'none';
 resetTokenBtn.onclick = async () => {
-    await refreshToken();
-    tokenManageStatus.innerText = 'Đã reset token mới!';
+    await refreshToken(true);
+    tokenManageStatus.innerText = 'Đã reset token mới và quét lại pages!';
     setTimeout(() => tokenManageStatus.innerText = '', 3000);
 };
 copyTokenBtn.onclick = async () => {
@@ -951,14 +999,32 @@ async function init() {
     isTokenCollapsed = true;
     updateTokenToggleIcon();
 
-    const stored = await getStoredToken();
-    if (stored.valid) {
-        userAccessToken = stored.token;
-        currentToken = stored.token;
-        tokenInput.value = stored.token;
-        tokenStatus.innerHTML = `<span class="tag tag-success">✅ Token còn ${stored.daysLeft} ngày</span>`;
-        if (stored.daysLeft < 20) tokenStatus.innerHTML += ` <span class="tag tag-warning">Sắp hết hạn</span>`;
-        await scanPages(stored.token);
+    const storedToken = await getStoredToken();
+    if (storedToken.valid) {
+        // Tự động refresh nếu dưới 35 ngày
+        const finalToken = await autoRefreshTokenIfNeeded(storedToken);
+        userAccessToken = finalToken;
+        currentToken = finalToken;
+        tokenInput.value = finalToken;
+        const newStored = await getStoredToken(); // lấy lại expiry mới nếu đã refresh
+        const daysLeft = newStored.valid ? newStored.daysLeft : storedToken.daysLeft;
+        tokenStatus.innerHTML = `<span class="tag tag-success">✅ Token còn ${daysLeft} ngày</span>`;
+        if (daysLeft < 20) tokenStatus.innerHTML += ` <span class="tag tag-warning">Sắp hết hạn</span>`;
+
+        // Load pages từ storage (nếu có)
+        const storedPages = await getStoredPages();
+        if (storedPages && storedPages.length > 0) {
+            pages = storedPages;
+            filteredPages = [...pages];
+            selectedPageIds.clear();
+            renderPageList();
+            pagesSection.style.display = 'block';
+            document.getElementById('postActionCard').style.display = 'block';
+            showToast(`Đã tải ${pages.length} page từ bộ nhớ`, 'success');
+        } else {
+            // Chưa có pages trong storage, phải quét
+            await scanPages(finalToken);
+        }
     } else {
         tokenStatus.innerHTML = `<span class="tag tag-warning">⚠️ Chưa có token hoặc hết hạn</span>`;
     }

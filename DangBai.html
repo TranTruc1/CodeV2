@@ -15,7 +15,7 @@
             overflow: hidden;
         }
         .app-container {
-            max-width: 70%;
+            max-width: 100%;
             margin: 0 auto;
             background: white;
             border-radius: 20px;
@@ -312,21 +312,21 @@
         </div>
     </div>
 
-    <div id="pagesSection" class="card" style="display:none;">
+    <div id="pagesSection" style="display:none;">
         <div class="card-title">📌 Danh sách Page (<span id="pageCount">0</span>)</div>
         <div class="search-box">
-            <input type="text" id="searchPages" placeholder="Tìm kiếm Page...">
+            <input type="text" id="searchPages"  placeholder="Tìm kiếm Page...">
         </div>
         <div id="pagesListContainer" class="page-list-container"></div>
         <div class="flex-between" style="margin-top:12px;">
-            <label><input type="checkbox" id="selectAllPages"> Chọn tất cả</label>
-            <span class="tag">🖱️ Chuột phải vào Page để quét bài / thêm admin</span>
+            <label><input type="checkbox" id="selectAllPages" > Chọn tất cả</label>
+               <div id="postActionCard" style="display:none;">
+        <button id="startPostBtn" class="btn-success" disabled style="width:100%; padding:12px;">🚀 BẮT ĐẦU ĐĂNG LOẠT</button>
+    </div>
         </div>
     </div>
 
-    <div id="postActionCard" class="card" style="display:none;">
-        <button id="startPostBtn" class="btn-success" disabled style="width:100%; padding:12px;">🚀 BẮT ĐẦU ĐĂNG LOẠT</button>
-    </div>
+
 </div>
 
 <div id="toast-container"></div>
