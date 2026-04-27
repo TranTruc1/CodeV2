@@ -13,16 +13,48 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             height: 100vh;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
         .app-container {
-            max-width: 100%;
+            width: 100%;
             margin: 0 auto;
             background: white;
             border-radius: 20px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.1);
             padding: 20px;
-            height: 100%;
+            height: calc(100vh - 48px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        /* Nút BẮT ĐẦU ĐĂNG LOẠT luôn ở cuối vùng nhìn thấy */
+        #pagesSection {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .pages-header {
+            flex-shrink: 0;
+        }
+        .page-list-container {
+            flex: 1;
             overflow-y: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            background: #fff;
+            margin-bottom: 10px;
+            min-height: 0;
+        }
+        #postActionCard {
+            display: none;
+            margin-top: 10px;
+            flex-shrink: 0;
+        }
+        button#startPostBtn {
+            width: 100%;
         }
         @media (max-width: 1000px) {
             .app-container { max-width: 90%; }
@@ -44,18 +76,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            cursor: pointer;
-        }
-        .card-title span {
-            font-size: 20px;
-            transition: transform 0.2s;
-        }
-        .card-title.collapsed span {
-            transform: rotate(-90deg);
-        }
-        .card-content {
-            transition: max-height 0.3s ease-out;
-            overflow: hidden;
         }
         input, textarea, select {
             width: 100%;
@@ -89,15 +109,40 @@
             flex-wrap: wrap;
         }
         .flex-start { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-        
-        /* Page list */
-        .page-list-container {
-            max-height: 320px;
-            overflow-y: auto;
-            border: 1px solid #e9ecef;
-            border-radius: 12px;
-            background: #fff;
+
+        /* Fixed token button */
+        #tokenFixedBtn {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            z-index: 1500;
+            background: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 12px 20px;
+            font-size: 15px;
+            font-weight: 700;
+            box-shadow: 0 4px 18px rgba(24,119,242,0.45);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s, box-shadow 0.2s;
         }
+        #tokenFixedBtn:hover { background: #0d5ab5; box-shadow: 0 6px 24px rgba(24,119,242,0.55); }
+
+        /* Token dot indicator */
+        #tokenFixedBtn .token-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff4d4f;
+            display: inline-block;
+        }
+        #tokenFixedBtn .token-dot.ok { background: #52c41a; }
+
+        /* Page item */
         .page-item {
             padding: 8px 12px;
             border-bottom: 1px solid #f0f0f0;
@@ -116,11 +161,38 @@
         .search-box { margin-bottom: 12px; position: relative; }
         .search-box input { padding-left: 32px; }
         .search-box::before { content: "🔍"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 14px; color: #888; }
-        
+
+        /* Select-all row */
+        .select-all-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .select-all-row label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #222;
+            cursor: pointer;
+            line-height: 1;
+            user-select: none;
+        }
+        #selectAllPages {
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            min-height: 22px;
+            accent-color: #1877f2;
+            cursor: pointer;
+            margin: 0;
+        }
+
         /* Toast */
         #toast-container {
             position: fixed;
-            bottom: 20px;
+            bottom: 80px;
             right: 20px;
             z-index: 9999;
             display: flex;
@@ -250,13 +322,13 @@
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             z-index: 1000;
-            min-width: 180px;
+            min-width: 200px;
             padding: 4px 0;
             display: none;
         }
-        .context-menu-item { padding: 8px 16px; cursor: pointer; }
+        .context-menu-item { padding: 8px 16px; cursor: pointer; font-size: 14px; }
         .context-menu-item:hover { background: #f0f2f5; }
-        
+
         /* Post card */
         .post-card {
             border: 1px solid #e9ecef;
@@ -293,47 +365,144 @@
             border-radius: 8px;
             padding: 8px;
         }
+
+        /* Post type filter checkboxes */
+        .post-type-filters {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            background: #f0f4ff;
+            border: 1px solid #d0dbff;
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin-bottom: 10px;
+        }
+        .post-type-filters .filter-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #444;
+            white-space: nowrap;
+        }
+        .post-type-cb-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1877f2;
+            user-select: none;
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1.5px solid #d0dbff;
+            background: white;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .post-type-cb-item:hover { background: #e7f0ff; }
+        .post-type-cb-item input[type=checkbox] {
+            width: 17px;
+            height: 17px;
+            min-width: 17px;
+            accent-color: #1877f2;
+            cursor: pointer;
+            margin: 0;
+        }
+        .post-type-cb-item.active { background: #dceaff; border-color: #1877f2; }
+
+        /* Progress bar */
+        #progressBarModal {
+            width: 0%;
+            height: 100%;
+            background: #1877f2;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        /* Posts loading */
+        #postsLoadingIndicator {
+            display: none;
+            text-align: center;
+            padding: 16px;
+            color: #1877f2;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .spinner {
+            display: inline-block;
+            width: 22px;
+            height: 22px;
+            border: 3px solid #e0e7ff;
+            border-top-color: #1877f2;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Token config modal */
+        .token-config-modal { width: 90%; max-width: 520px; }
+        .tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .tag-success { background: #d4edda; color: #155724; }
+        .tag-warning { background: #fff3cd; color: #856404; }
     </style>
 </head>
 <body>
 <div class="app-container">
-    <div class="card" id="tokenCard">
-        <div class="card-title" id="tokenCardTitle">
-            🔑 Cấu hình Token
-            <span id="tokenToggleIcon">▼</span>
-        </div>
-        <div id="tokenContent" class="card-content" style="max-height: 0; overflow: hidden; padding: 0;">
-            <input type="password" id="tokenInput" placeholder="Dán Access Token" style="margin-bottom:12px;">
-            <div class="flex-between">
-                <button id="scanBtn" class="btn-primary">🔍 Quét Page</button>
-                <button id="manageTokenBtn" class="btn-secondary">⚙️ Quản lý token</button>
+    <div id="pagesSection">
+        <div class="card-title pages-header">📌 Danh sách Page (<span id="pageCount">0</span>)</div>
+        <div style="display: flex; justify-content: space-between; align-items: center;" class="pages-header">
+            <div class="select-all-row">
+                <label>
+                    <input type="checkbox" id="selectAllPages"> Chọn tất cả
+                </label>
             </div>
-            <div id="tokenStatus" class="status-text" style="margin-top:8px;"></div>
-        </div>
-    </div>
-
-    <div id="pagesSection" style="display:none;">
-        <div class="card-title">📌 Danh sách Page (<span id="pageCount">0</span>)</div>
-        <div class="search-box">
-            <input type="text" id="searchPages"  placeholder="Tìm kiếm Page...">
+            <div class="search-box" style="width: 60%;">
+                <input type="text" id="searchPages" placeholder="Tìm kiếm Page..." style="width: 100%;">
+            </div>
         </div>
         <div id="pagesListContainer" class="page-list-container"></div>
-        <div class="flex-between" style="margin-top:12px;">
-            <label><input type="checkbox" id="selectAllPages" > Chọn tất cả</label>
-               <div id="postActionCard" style="display:none;">
-        <button id="startPostBtn" class="btn-success" disabled style="width:100%; padding:12px;">🚀 BẮT ĐẦU ĐĂNG LOẠT</button>
-    </div>
+        <div id="postActionCard">
+            <button id="startPostBtn" class="btn-success" disabled style="padding:12px 24px;">🚀 BẮT ĐẦU ĐĂNG LOẠT</button>
         </div>
     </div>
 
-
+    <div id="emptyState" style="text-align:center; padding:60px 20px; color:#999;">
+        <div style="font-size:48px; margin-bottom:16px;">🔑</div>
+        <div style="font-size:18px; font-weight:600; margin-bottom:8px;">Chưa cấu hình Token</div>
+        <div style="font-size:14px;">Nhấn nút <strong style="color:#1877f2;">🔑 Cấu hình Token</strong> ở góc phải dưới màn hình để bắt đầu.</div>
+    </div>
 </div>
+
+<!-- Fixed token button -->
+<button id="tokenFixedBtn">
+    <span class="token-dot" id="tokenDot"></span>
+    🔑 Cấu hình Token
+</button>
 
 <div id="toast-container"></div>
 
 <div id="contextMenu" class="context-menu">
+    <div id="ctxOpenPage" class="context-menu-item">🌐 Mở trang Page</div>
     <div id="ctxScanPosts" class="context-menu-item">📄 Quét & xoá bài viết</div>
     <div id="ctxAddRole" class="context-menu-item">👥 Thêm Admin/Editor</div>
+</div>
+
+<!-- Modal cấu hình token -->
+<div id="tokenConfigModal" class="modal">
+    <div class="modal-content token-config-modal">
+        <div class="modal-header">
+            <h3 style="margin:0;">🔑 Cấu hình Token Facebook</h3>
+            <button id="closeTokenConfigModal" class="btn-secondary">✖ Đóng</button>
+        </div>
+        <input type="password" id="tokenInput" placeholder="Dán Access Token vào đây..." style="margin-bottom:12px;">
+        <div class="flex-between" style="margin-bottom:12px;">
+            <button id="scanBtn" class="btn-primary">🔍 Quét Page</button>
+            <button id="manageTokenBtn" class="btn-secondary">⚙️ Quản lý token</button>
+        </div>
+        <div id="tokenStatus" class="status-text"></div>
+    </div>
 </div>
 
 <!-- Modal nhập bài đăng -->
@@ -380,6 +549,9 @@
         <div class="flex-between" style="margin-top: 16px;">
             <span id="progressSummaryModal"></span>
         </div>
+        <div style="width:100%; height:8px; background:#e9ecef; border-radius:4px; margin-top:8px;">
+            <div id="progressBarModal"></div>
+        </div>
     </div>
 </div>
 
@@ -389,7 +561,7 @@
             <h3 id="modalPageName">Bài viết của Page</h3>
             <button id="closePostsModal" class="btn-secondary">✖ Đóng</button>
         </div>
-        <div class="flex-between" style="margin-bottom: 12px; flex-wrap: wrap;">
+        <div class="flex-between" style="margin-bottom: 10px; flex-wrap: wrap;">
             <div>
                 <button id="selectAllPostsBtn" class="btn-primary">✅ Chọn tất cả</button>
                 <button id="deselectAllPostsBtn" class="btn-secondary">❌ Bỏ chọn tất cả</button>
@@ -399,9 +571,22 @@
                 <button id="deleteSelectedPostsBtn" class="btn-danger">🗑 Xoá bài đã chọn (<span id="selectedCount">0</span>)</button>
             </div>
         </div>
-        <div id="postsGrid" style="flex:1; overflow:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px;"></div>
-        <div class="flex-between" style="margin-top:16px;">
-            <button id="loadMorePostsBtn" class="btn-secondary">📥 Tải thêm</button>
+        <!-- Filter checkboxes by post type -->
+        <div class="post-type-filters">
+            <span class="filter-label">Chọn theo loại:</span>
+            <label class="post-type-cb-item" id="cbLabelText">
+                <input type="checkbox" id="cbFilterText"> 📝 Bài viết (ko ảnh)
+            </label>
+            <label class="post-type-cb-item" id="cbLabelPhoto">
+                <input type="checkbox" id="cbFilterPhoto"> 🖼️ Bài viết có ảnh
+            </label>
+            <label class="post-type-cb-item" id="cbLabelVideo">
+                <input type="checkbox" id="cbFilterVideo"> 🎬 Bài viết có video
+            </label>
+        </div>
+        <div id="postsGrid" style="flex:1; overflow:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; align-content:start;"></div>
+        <div id="postsLoadingIndicator">
+            <span class="spinner"></span> Đang tải bài viết...
         </div>
     </div>
 </div>
