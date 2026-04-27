@@ -369,8 +369,10 @@ async function downloadFile(url) {
                 } else if (response && response.data) {
                     const uint8 = new Uint8Array(response.data);
                     const blob = new Blob([uint8]);
-                    let filename = url.split('/').pop().split('?')[0] || 'video.mp4';
-                    resolve(new File([blob], filename, { type: blob.type || 'video/mp4' }));
+                    let filename = url.split('/').pop().split('?')[0] || 'file';
+                    // 🔧 Đã sửa: không ép kiểu video/mp4, dùng MIME thực tế hoặc để trống
+                    const mimeType = blob.type || '';
+                    resolve(new File([blob], filename, { type: mimeType }));
                 } else {
                     reject(new Error('Dữ liệu không hợp lệ từ background'));
                 }
@@ -387,7 +389,8 @@ async function downloadFile(url) {
         let filename = u.split('/').pop().split('?')[0] || 'file';
         const ext = blob.type.split('/')[1] || 'bin';
         if (!filename.includes('.')) filename += '.' + ext;
-        return new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+        // 🔧 Đã sửa: giữ nguyên type từ server, không tự gán application/octet-stream
+        return new File([blob], filename, { type: blob.type || '' });
     }
 }
 
