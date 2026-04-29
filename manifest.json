@@ -47,7 +47,7 @@
     },
     {
       "matches": [
-        "https://business.facebook.com/*"
+        "https://business.facebook.com/latest/inbox/*"
       ],
       "js": ["thongbao.js"],
       "run_at": "document_idle"

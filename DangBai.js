@@ -177,29 +177,29 @@ async function getStoredPages() {
     });
 }
 
-// ========== API cơ bản (v19.0) ==========
+// ========== API cơ bản (v25.0) ==========
 async function exchangeToken(shortToken) {
-    const url = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${shortToken}`;
+    const url = `https://graph.facebook.com/v25.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${shortToken}`;
     const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
     return { token: data.access_token, expiresIn: data.expires_in || 5184000 };
 }
 async function fetchPages(token) {
-    const url = `https://graph.facebook.com/v19.0/me/accounts?fields=name,access_token,picture{url},id&limit=100&access_token=${token}`;
+    const url = `https://graph.facebook.com/v25.0/me/accounts?fields=name,access_token,picture{url},id&limit=100&access_token=${token}`;
     const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
     return data.data || [];
 }
 async function deletePost(postId, pageToken) {
-    const resp = await fetch(`https://graph.facebook.com/v19.0/${postId}?access_token=${pageToken}`, { method: 'DELETE' });
+    const resp = await fetch(`https://graph.facebook.com/v25.0/${postId}?access_token=${pageToken}`, { method: 'DELETE' });
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
     return data;
 }
 async function fetchPagePosts(pageId, pageToken, after = null) {
-    let url = `https://graph.facebook.com/v19.0/${pageId}/posts?fields=id,message,created_time,attachments{media_type,media,url,target,subattachments},full_picture&limit=25&access_token=${pageToken}`;
+    let url = `https://graph.facebook.com/v25.0/${pageId}/posts?fields=id,message,created_time,attachments{media_type,media,url,target,subattachments},full_picture&limit=25&access_token=${pageToken}`;
     if (after) url += `&after=${after}`;
     const resp = await fetch(url);
     const data = await resp.json();
@@ -207,7 +207,7 @@ async function fetchPagePosts(pageId, pageToken, after = null) {
     return data;
 }
 async function addRoleToPageWithUserToken(pageId, userId, role) {
-    const url = `https://graph.facebook.com/v19.0/${pageId}/roles`;
+    const url = `https://graph.facebook.com/v25.0/${pageId}/roles`;
     const form = new FormData();
     form.append('user', userId);
     form.append('role', role);
@@ -225,7 +225,7 @@ async function uploadVideoToPage(pageId, pageToken, videoFile, description) {
     initForm.append('upload_phase', 'start');
     initForm.append('file_size', fileSize);
     initForm.append('access_token', pageToken);
-    const initRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, { method: 'POST', body: initForm });
+    const initRes = await fetch(`https://graph.facebook.com/v25.0/${pageId}/videos`, { method: 'POST', body: initForm });
     const initData = await initRes.json();
     if (initData.error) throw new Error(`Khởi tạo upload: ${initData.error.message}`);
     const uploadSessionId = initData.upload_session_id;
@@ -241,7 +241,7 @@ async function uploadVideoToPage(pageId, pageToken, videoFile, description) {
         chunkForm.append('start_offset', startOffset);
         chunkForm.append('video_file_chunk', chunk, `chunk_${startOffset}.part`);
         chunkForm.append('access_token', pageToken);
-        const chunkRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, { method: 'POST', body: chunkForm });
+        const chunkRes = await fetch(`https://graph.facebook.com/v25.0/${pageId}/videos`, { method: 'POST', body: chunkForm });
         const chunkData = await chunkRes.json();
         if (chunkData.error) throw new Error(`Chunk ${startOffset}: ${chunkData.error.message}`);
         startOffset = end;
@@ -252,7 +252,7 @@ async function uploadVideoToPage(pageId, pageToken, videoFile, description) {
     finishForm.append('upload_session_id', uploadSessionId);
     finishForm.append('description', description);
     finishForm.append('access_token', pageToken);
-    const finishRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, { method: 'POST', body: finishForm });
+    const finishRes = await fetch(`https://graph.facebook.com/v25.0/${pageId}/videos`, { method: 'POST', body: finishForm });
     const finishData = await finishRes.json();
     if (finishData.error) throw new Error(`Hoàn tất upload: ${finishData.error.message}`);
     return finishData;
@@ -264,7 +264,7 @@ async function crossPostVideo(pageId, pageToken, videoId, description) {
     form.append('video_id', videoId);
     form.append('description', description);
     form.append('access_token', pageToken);
-    let resp = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, { method: 'POST', body: form });
+    let resp = await fetch(`https://graph.facebook.com/v25.0/${pageId}/videos`, { method: 'POST', body: form });
     let data = await resp.json();
     if (!data.error) return data;
 
@@ -272,7 +272,7 @@ async function crossPostVideo(pageId, pageToken, videoId, description) {
     form.append('video_asset_id', videoId);
     form.append('description', description);
     form.append('access_token', pageToken);
-    resp = await fetch(`https://graph.facebook.com/v19.0/${pageId}/videos`, { method: 'POST', body: form });
+    resp = await fetch(`https://graph.facebook.com/v25.0/${pageId}/videos`, { method: 'POST', body: form });
     data = await resp.json();
     if (data.error) throw new Error(`Cross-post: ${data.error.message}`);
     return data;
@@ -312,7 +312,7 @@ async function postToPageWithMedia(pageId, pageToken, post) {
         form.append('caption', fullMessage);
         form.append('source', imgs[0], imgs[0].name);
         form.append('access_token', pageToken);
-        const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, { method: 'POST', body: form });
+        const res = await fetch(`https://graph.facebook.com/v25.0/${pageId}/photos`, { method: 'POST', body: form });
         const data = await res.json();
         if (data.error) throw new Error(`Photo: ${data.error.message}`);
         return data;
@@ -324,7 +324,7 @@ async function postToPageWithMedia(pageId, pageToken, post) {
             fd.append('source', img, img.name);
             fd.append('published', 'false');
             fd.append('access_token', pageToken);
-            const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, { method: 'POST', body: fd });
+            const res = await fetch(`https://graph.facebook.com/v25.0/${pageId}/photos`, { method: 'POST', body: fd });
             const data = await res.json();
             if (data.error) throw new Error(`Upload media: ${data.error.message}`);
             mediaIds.push(data.id);
@@ -333,7 +333,7 @@ async function postToPageWithMedia(pageId, pageToken, post) {
         form.append('message', fullMessage);
         form.append('access_token', pageToken);
         mediaIds.forEach(id => form.append('attached_media[]', JSON.stringify({ media_fbid: id })));
-        const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, { method: 'POST', body: form });
+        const res = await fetch(`https://graph.facebook.com/v25.0/${pageId}/feed`, { method: 'POST', body: form });
         const data = await res.json();
         if (data.error) throw new Error(`Album: ${data.error.message}`);
         return data;
@@ -341,7 +341,7 @@ async function postToPageWithMedia(pageId, pageToken, post) {
     const form = new FormData();
     form.append('message', fullMessage);
     form.append('access_token', pageToken);
-    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, { method: 'POST', body: form });
+    const res = await fetch(`https://graph.facebook.com/v25.0/${pageId}/feed`, { method: 'POST', body: form });
     const data = await res.json();
     if (data.error) throw new Error(`Text: ${data.error.message}`);
     return data;
@@ -349,7 +349,7 @@ async function postToPageWithMedia(pageId, pageToken, post) {
 
 // ========== Copy bài viết ==========
 async function getPostContentForCopy(postId, pageToken) {
-    const url = `https://graph.facebook.com/v19.0/${postId}?fields=message,attachments{media_type,media,url,target,subattachments}&access_token=${pageToken}`;
+    const url = `https://graph.facebook.com/v25.0/${postId}?fields=message,attachments{media_type,media,url,target,subattachments}&access_token=${pageToken}`;
     const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
@@ -454,7 +454,7 @@ async function copyPostToPage(pageId, pageToken, originalPost) {
     } else if (filesToUpload.length === 1) {
         await postToPageWithMedia(pageId, pageToken, { content: message, files: filesToUpload });
     } else {
-        const base = 'https://graph.facebook.com/v19.0/';
+        const base = 'https://graph.facebook.com/v25.0/';
         const mediaIds = [];
         for (let file of filesToUpload) {
             const fd = new FormData();
@@ -863,7 +863,7 @@ async function addRole() {
     if (!/^\d+$/.test(extracted)) {
         showToast('Đang lấy ID...', 'info');
         try {
-            const url = `https://graph.facebook.com/v19.0/${extracted}?access_token=${userAccessToken}&fields=id`;
+            const url = `https://graph.facebook.com/v25.0/${extracted}?access_token=${userAccessToken}&fields=id`;
             const resp = await fetch(url);
             const data = await resp.json();
             if (data.error) throw new Error(data.error.message);
