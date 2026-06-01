@@ -11681,21 +11681,15 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
   const loadingEl = document.getElementById('loadingFriendList');
   if (!loadingEl) return;
 
-  // Tạo bộ theo dõi sự thay đổi của thẻ loading
   const observer = new MutationObserver((mutations) => {
-    // Kiểm tra nếu nội dung bên trong thẻ đã bị xóa rỗng (hoặc hiển thị none)
     const isLoaded = loadingEl.innerHTML.trim() === '' || loadingEl.style.display === 'none';
     
     if (isLoaded) {
       console.log('✅ Dữ liệu đã tải xong (Full)! Tiến hành lọc nhãn...');
-      // Thêm nút Chọn/Loại trừ vào giao diện
 
 (function() {
 
 const tagList = document.getElementById('tag_list');
-
-
-// Tạo khu vực radio + selected chips
 
 const controlDiv = document.createElement('div');
 
@@ -11737,15 +11731,9 @@ display:none;
 
 tagList.parentNode.insertBefore(controlDiv, tagList);
 
-
-
-// Disable 2 nút radio ban đầu
-
 const radios = controlDiv.querySelectorAll('input[type="radio"]');
 
 radios.forEach(r => r.disabled = true);
-
-
 
 document.getElementById('btn_clear_tags').onclick = () => {
 
@@ -11753,15 +11741,9 @@ window._selectedTags = new Map();
 
 renderChips();
 
-// Reset dataUID về ban đầu (tuỳ logic của bạn)
-
 console.log('Đã xoá tất cả nhãn đã chọn');
 
 };
-
-
-
-// Hàm disable/enable 2 nút gửi tin
 
 function setButtonsDisabled(disabled) {
 
@@ -11775,19 +11757,11 @@ if (sendBtn) sendBtn.disabled = disabled;
 
 }
 
-
-
-// Lưu hàm vào window để dùng ngoài
-
 window.setButtonsDisabled = setButtonsDisabled;
 
 })();
 
-
-
 window._selectedTags = new Map();
-
-
 
 function renderChips() {
 
@@ -11799,8 +11773,6 @@ if (!chipsEl) return;
 
 chipsEl.innerHTML = '';
 
-
-
 if (window._selectedTags.size === 0) {
 
 if (clearBtn) clearBtn.style.display = 'none';
@@ -11809,11 +11781,7 @@ return;
 
 }
 
-
-
 if (clearBtn) clearBtn.style.display = 'inline-block';
-
-
 
 window._selectedTags.forEach((val, tagId) => {
 
@@ -11859,27 +11827,11 @@ chipsEl.appendChild(chip);
 
 }
 
-
-
-window.filterBySelectedTags = function() {
+window.filterBySelectedTags = async function() {
 
 if (window._selectedTags.size === 0) return;
 
-
-
-// 🔒 Khoá 2 nút khi đang load dữ liệu
-
 window.setButtonsDisabled(true);
-
-
-
-getFriend(null).then(data => {
-
-const nodes = data?.o0?.data?.viewer?.message_threads?.nodes;
-
-if (!nodes) { console.log('Không có nodes'); window.setButtonsDisabled(false); return; }
-
-
 
 const includeTags = new Set();
 
@@ -11893,9 +11845,23 @@ else includeTags.add(tagId);
 
 });
 
-
-
 const allMap = new Map();
+
+let cursor = null;
+
+let hasMore = true;
+
+let prevSize = -1;
+
+while (hasMore) {
+
+const data = await getFriend(cursor).catch(() => null);
+
+if (!data) break;
+
+const nodes = data?.o0?.data?.viewer?.message_threads?.nodes;
+
+if (!nodes || nodes.length === 0) break;
 
 nodes.forEach(node => {
 
@@ -11917,7 +11883,33 @@ allMap.set(actor, { uid: actor, name, labelIds });
 
 });
 
+if (allMap.size === prevSize) {
 
+hasMore = false;
+
+break;
+
+}
+
+prevSize = allMap.size;
+
+const lastNode = nodes[nodes.length - 1];
+
+const nextCursor = lastNode?.updated_time_precise ?? null;
+
+if (!nextCursor || nextCursor === cursor) {
+
+hasMore = false;
+
+} else {
+
+cursor = nextCursor - 1000;
+
+}
+
+console.log(`Đã quét: ${allMap.size} khách...`);
+
+}
 
 let filtered = [];
 
@@ -11935,21 +11927,13 @@ filtered = [...allMap.values()];
 
 }
 
-
-
 if (excludeTags.size > 0) {
 
 filtered = filtered.filter(u => !u.labelIds.some(id => excludeTags.has(id)));
 
 }
 
-
-
 console.log(`Kết quả: ${filtered.length} khách`);
-
-console.table(filtered.map(f => ({ uid: f.uid, name: f.name })));
-
-
 
 dataUID = filtered.map(f => ({
 
@@ -11965,43 +11949,21 @@ sendUID = [...dataUID];
 
 totalFriend = dataUID.length;
 
-
-
-// ✅ Cập nhật đúng ID và hiển thị số
-
 const countEl = document.getElementById('toltalSendCount');
 
 if (countEl) countEl.innerHTML = `Tổng gửi: ${filtered.length}/${totalFriend}`;
 
-
-
-window.setButtonsDisabled(false); // Mở khoá sau khi xong
-
-}).catch(err => {
-
-console.error('Lỗi khi filter:', err);
-
 window.setButtonsDisabled(false);
 
-});
-
 };
-
-
 
 getTagList(page_id).then(tags => {
 
 console.log(`Đã load ${tags.length} nhãn`);
 
-
-
-// Bật radio sau khi load xong
-
 const radios = document.querySelectorAll('input[name="tag_mode"]');
 
 radios.forEach(r => r.disabled = false);
-
-
 
 const input = document.getElementById('search_dl2811');
 
@@ -12009,13 +11971,9 @@ input.setAttribute('autocomplete', 'off');
 
 input.onkeyup = null;
 
-
-
 const oldDropdown = input.parentNode.querySelector('.tag-dropdown');
 
 if (oldDropdown) oldDropdown.remove();
-
-
 
 const dropdown = document.createElement('div');
 
@@ -12037,8 +11995,6 @@ input.parentNode.style.position = 'relative';
 
 input.parentNode.appendChild(dropdown);
 
-
-
 const getMode = () => {
 
 const r = document.querySelector('input[name="tag_mode"]:checked');
@@ -12046,8 +12002,6 @@ const r = document.querySelector('input[name="tag_mode"]:checked');
 return r ? r.value : 'INNER';
 
 };
-
-
 
 const renderDropdown = (keyword = '') => {
 
@@ -12059,11 +12013,7 @@ const matched = keyword
 
 : tags;
 
-
-
 if (!matched.length) { dropdown.style.display = 'none'; return; }
-
-
 
 matched.forEach(t => {
 
@@ -12127,13 +12077,9 @@ dropdown.appendChild(item);
 
 });
 
-
-
 dropdown.style.display = 'block';
 
 };
-
-
 
 input.addEventListener('input', () => renderDropdown(input.value));
 
@@ -12150,17 +12096,15 @@ dropdown.style.display = 'none';
 });
 
 });
-      // Kích hoạt hàm lọc của bạn ngay lập tức
+
       if (typeof window.filterBySelectedTags === 'function') {
         window.filterBySelectedTags();
       }
       
-      // Ngừng theo dõi để tránh chạy lại nhiều lần không cần thiết
       observer.disconnect();
     }
   });
 
-  // Cấu hình theo dõi sự thay đổi nội dung và thuộc tính của thẻ
   observer.observe(loadingEl, { 
     childList: true, 
     characterData: true, 
