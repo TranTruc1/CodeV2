@@ -1,11 +1,11 @@
 // DangBai.js - Resumable upload video, copy video, sửa lỗi quét bài viết
-// Đã sửa: lưu pages vào storage, chỉ load 1 lần, tự động reset token khi dưới 35 ngày
+// Đã sửa: MỖI KHI VÀO TỰ ĐỘNG RESET TOKEN MỚI VÀ LẤY DANH SÁCH PAGES TỪ API
 // Cập nhật: token button fixed, checkbox to hơn, mở page từ ctx menu, infinite scroll posts
 // Thêm: đồng bộ tick bộ lọc, tiến trình %, nút đăng loạt luôn hiển thị
 
 const TOKEN_KEY = 'fb_bulk_token';
 const TOKEN_EXPIRY_KEY = 'fb_bulk_token_expiry';
-const PAGES_DATA_KEY = 'fb_pages_data';
+const PAGES_DATA_KEY = 'fb_pages_data';  // vẫn giữ để lưu pages sau khi fetch (nếu cần)
 const FB_APP_ID = '436239572033001';
 const FB_APP_SECRET = '46ba3ead34d90da033b0204ea6cf213d';
 
@@ -370,7 +370,6 @@ async function downloadFile(url) {
                     const uint8 = new Uint8Array(response.data);
                     const blob = new Blob([uint8]);
                     let filename = url.split('/').pop().split('?')[0] || 'file';
-                    // 🔧 Đã sửa: không ép kiểu video/mp4, dùng MIME thực tế hoặc để trống
                     const mimeType = blob.type || '';
                     resolve(new File([blob], filename, { type: mimeType }));
                 } else {
@@ -389,7 +388,6 @@ async function downloadFile(url) {
         let filename = u.split('/').pop().split('?')[0] || 'file';
         const ext = blob.type.split('/')[1] || 'bin';
         if (!filename.includes('.')) filename += '.' + ext;
-        // 🔧 Đã sửa: giữ nguyên type từ server, không tự gán application/octet-stream
         return new File([blob], filename, { type: blob.type || '' });
     }
 }
@@ -682,7 +680,7 @@ async function startPostingFromModal() {
     showToast('Đăng bài hoàn tất!', 'success');
 }
 
-// ========== Scan pages ==========
+// ========== Scan pages (giữ lại cho nút "Quét Page") ==========
 async function scanPages(token) {
     if (!token) { showToast('Nhập token!', 'error'); return; }
     showToast('Đang quét Page...', 'info');
@@ -701,7 +699,7 @@ async function scanPages(token) {
     }
 }
 
-// ========== Token refresh ==========
+// ========== Token refresh (vẫn dùng cho nút reset) ==========
 async function refreshToken(shouldScan = true) {
     let shortToken = tokenInput.value.trim();
     if (!shortToken) {
@@ -729,20 +727,6 @@ async function refreshToken(shouldScan = true) {
         showToast(err.message, 'error');
         throw err;
     }
-}
-async function autoRefreshTokenIfNeeded(tokenObj) {
-    if (!tokenObj || !tokenObj.valid) return null;
-    if (tokenObj.daysLeft < 35) {
-        showToast(`Token còn ${tokenObj.daysLeft} ngày, tự động reset lên 60 ngày...`, 'info');
-        try {
-            const result = await refreshToken(false);
-            return result.token;
-        } catch (e) {
-            console.error('Auto refresh token thất bại:', e);
-            return tokenObj.token;
-        }
-    }
-    return tokenObj.token;
 }
 
 function updateTokenModalDisplay(token) {
@@ -1086,43 +1070,60 @@ async function deleteSelectedPosts() {
     showToast('Đã xoá các bài được chọn', 'success');
 }
 
-// ========== Init ==========
+// ========== INIT ==========
+// ******* THAY ĐỔI CHÍNH: Mỗi lần mở popup, tự động exchange token và lấy pages mới *******
 async function init() {
-    const storedToken = await getStoredToken();
-    if (storedToken.valid) {
-        const finalToken = await autoRefreshTokenIfNeeded(storedToken);
-        userAccessToken = finalToken;
-        currentToken = finalToken;
-        tokenInput.value = finalToken;
-        const newStored = await getStoredToken();
-        const daysLeft = newStored.valid ? newStored.daysLeft : storedToken.daysLeft;
-        tokenStatus.innerHTML = `<span class="tag tag-success">✅ Token còn ${daysLeft} ngày</span>`;
-        if (daysLeft < 20) tokenStatus.innerHTML += ` <span class="tag tag-warning">Sắp hết hạn</span>`;
-        updateTokenDot(true);
+    // 1. Lấy short token hiện có (từ input hoặc storage)
+    let shortToken = tokenInput.value.trim();
+    if (!shortToken) {
+        const stored = await getStoredToken();
+        if (stored.valid) shortToken = stored.token;
+    }
 
-        const storedPages = await getStoredPages();
-        if (storedPages && storedPages.length > 0) {
-            pages = storedPages;
-            filteredPages = [...pages];
+    if (shortToken) {
+        // 2. Luôn thực hiện exchange token để lấy token mới (reset token)
+        try {
+            const { token, expiresIn } = await exchangeToken(shortToken);
+            currentToken = token;
+            userAccessToken = token;
+            tokenInput.value = token;          // hiển thị token mới
+            saveToken(token, expiresIn);       // lưu token dài hạn
+            tokenStatus.innerHTML = `<span class="tag tag-success">✅ Token mới (${Math.floor(expiresIn/86400)} ngày)</span>`;
+            updateTokenDot(true);
+
+            // 3. Gọi API lấy danh sách pages mới nhất
+            pages = await fetchPages(token);
             selectedPageIds.clear();
+            filteredPages = [...pages];
             renderPageList();
             pagesSection.style.display = 'flex';
             emptyState.style.display = 'none';
             document.getElementById('postActionCard').style.display = 'block';
-            showToast(`Đã tải ${pages.length} page từ bộ nhớ`, 'success');
-        } else {
-            await scanPages(finalToken);
+
+            // 4. Lưu cache pages vào storage (tùy chọn, không dùng để khởi tạo sau này)
+            await savePagesToStorage(pages);
+            showToast(`Đã tải ${pages.length} page từ API`, 'success');
+        } catch (err) {
+            showToast('Lỗi khi reset token hoặc tải pages: ' + err.message, 'error');
+            tokenStatus.innerHTML = `<span class="tag tag-error">❌ Lỗi kết nối</span>`;
+            updateTokenDot(false);
+            emptyState.style.display = 'block';
+            pagesSection.style.display = 'none';
         }
     } else {
-        tokenStatus.innerHTML = `<span class="tag tag-warning">⚠️ Chưa có token hoặc hết hạn</span>`;
+        // Không có token
+        tokenStatus.innerHTML = `<span class="tag tag-warning">⚠️ Chưa có token, vui lòng nhập</span>`;
         updateTokenDot(false);
         emptyState.style.display = 'block';
+        pagesSection.style.display = 'none';
     }
+
+    // Khởi tạo editor bài đăng
     postsData = [{ content: '', files: [], hashtag: '' }];
     renderPostsEditorModal();
 }
 
-// ========== Event bindings ==========
+// ========== Event bindings (giữ nguyên) ==========
 scanBtn.onclick = () => {
     const t = tokenInput.value.trim();
     if (t) {

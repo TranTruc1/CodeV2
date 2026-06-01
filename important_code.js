@@ -11675,3 +11675,497 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
         container.scrollTop = container.scrollHeight;
     };
 })();
+
+
+(function() {
+  const loadingEl = document.getElementById('loadingFriendList');
+  if (!loadingEl) return;
+
+  // Tạo bộ theo dõi sự thay đổi của thẻ loading
+  const observer = new MutationObserver((mutations) => {
+    // Kiểm tra nếu nội dung bên trong thẻ đã bị xóa rỗng (hoặc hiển thị none)
+    const isLoaded = loadingEl.innerHTML.trim() === '' || loadingEl.style.display === 'none';
+    
+    if (isLoaded) {
+      console.log('✅ Dữ liệu đã tải xong (Full)! Tiến hành lọc nhãn...');
+      // Thêm nút Chọn/Loại trừ vào giao diện
+
+(function() {
+
+const tagList = document.getElementById('tag_list');
+
+
+// Tạo khu vực radio + selected chips
+
+const controlDiv = document.createElement('div');
+
+controlDiv.id = 'tag_control_dl2811';
+
+controlDiv.style.cssText = 'margin: 6px 0;';
+
+controlDiv.innerHTML = `
+
+<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px;">
+
+<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+
+<input type="radio" name="tag_mode" value="INNER" checked> Chọn
+
+</label>
+
+<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+
+<input type="radio" name="tag_mode" value="OUTER"> Loại trừ
+
+</label>
+
+<button id="btn_clear_tags" style="
+
+font-size:12px; padding:2px 8px; border-radius:4px;
+
+border:1px solid #ddd; background:#fff; cursor:pointer;
+
+display:none;
+
+">Xoá tất cả</button>
+
+</div>
+
+<div id="tag_chips_dl2811" style="display:flex;flex-wrap:wrap;gap:4px;min-height:0;"></div>
+
+`;
+
+tagList.parentNode.insertBefore(controlDiv, tagList);
+
+
+
+// Disable 2 nút radio ban đầu
+
+const radios = controlDiv.querySelectorAll('input[type="radio"]');
+
+radios.forEach(r => r.disabled = true);
+
+
+
+document.getElementById('btn_clear_tags').onclick = () => {
+
+window._selectedTags = new Map();
+
+renderChips();
+
+// Reset dataUID về ban đầu (tuỳ logic của bạn)
+
+console.log('Đã xoá tất cả nhãn đã chọn');
+
+};
+
+
+
+// Hàm disable/enable 2 nút gửi tin
+
+function setButtonsDisabled(disabled) {
+
+const fastBtn = document.getElementById('fastClickBtn');
+
+const sendBtn = document.getElementById('btnStartSend');
+
+if (fastBtn) fastBtn.disabled = disabled;
+
+if (sendBtn) sendBtn.disabled = disabled;
+
+}
+
+
+
+// Lưu hàm vào window để dùng ngoài
+
+window.setButtonsDisabled = setButtonsDisabled;
+
+})();
+
+
+
+window._selectedTags = new Map();
+
+
+
+function renderChips() {
+
+const chipsEl = document.getElementById('tag_chips_dl2811');
+
+const clearBtn = document.getElementById('btn_clear_tags');
+
+if (!chipsEl) return;
+
+chipsEl.innerHTML = '';
+
+
+
+if (window._selectedTags.size === 0) {
+
+if (clearBtn) clearBtn.style.display = 'none';
+
+return;
+
+}
+
+
+
+if (clearBtn) clearBtn.style.display = 'inline-block';
+
+
+
+window._selectedTags.forEach((val, tagId) => {
+
+const chip = document.createElement('span');
+
+chip.style.cssText = `
+
+display:inline-flex; align-items:center; gap:4px;
+
+padding:3px 8px; border-radius:12px; font-size:12px;
+
+background:${val.color}22; border:1px solid ${val.color};
+
+color:#333; cursor:default;
+
+${val.exclude ? 'text-decoration:line-through;opacity:0.7;' : ''}
+
+`;
+
+chip.innerHTML = `
+
+<span style="width:8px;height:8px;border-radius:50%;background:${val.color};display:inline-block;flex-shrink:0;"></span>
+
+${val.exclude ? '🚫 ' : '✓ '}${val.tagName}
+
+<span style="cursor:pointer;font-weight:bold;margin-left:2px;font-size:14px;" data-id="${tagId}">×</span>
+
+`;
+
+chip.querySelector('span[data-id]').onclick = () => {
+
+window._selectedTags.delete(tagId);
+
+renderChips();
+
+window.filterBySelectedTags();
+
+};
+
+chipsEl.appendChild(chip);
+
+});
+
+}
+
+
+
+window.filterBySelectedTags = function() {
+
+if (window._selectedTags.size === 0) return;
+
+
+
+// 🔒 Khoá 2 nút khi đang load dữ liệu
+
+window.setButtonsDisabled(true);
+
+
+
+getFriend(null).then(data => {
+
+const nodes = data?.o0?.data?.viewer?.message_threads?.nodes;
+
+if (!nodes) { console.log('Không có nodes'); window.setButtonsDisabled(false); return; }
+
+
+
+const includeTags = new Set();
+
+const excludeTags = new Set();
+
+window._selectedTags.forEach((val, tagId) => {
+
+if (val.exclude) excludeTags.add(tagId);
+
+else includeTags.add(tagId);
+
+});
+
+
+
+const allMap = new Map();
+
+nodes.forEach(node => {
+
+const actor = node?.thread_key?.other_user_id;
+
+if (!actor) return;
+
+const edges = node?.all_participants?.edges || [];
+
+const participant = edges.find(e => e?.node?.messaging_actor?.id === actor);
+
+const name = participant?.node?.messaging_actor?.name || actor;
+
+const labels = node?.related_page_thread?.custom_thread_labels?.nodes || [];
+
+const labelIds = labels.map(l => l.id);
+
+allMap.set(actor, { uid: actor, name, labelIds });
+
+});
+
+
+
+let filtered = [];
+
+if (includeTags.size > 0) {
+
+allMap.forEach(u => {
+
+if (u.labelIds.some(id => includeTags.has(id))) filtered.push(u);
+
+});
+
+} else {
+
+filtered = [...allMap.values()];
+
+}
+
+
+
+if (excludeTags.size > 0) {
+
+filtered = filtered.filter(u => !u.labelIds.some(id => excludeTags.has(id)));
+
+}
+
+
+
+console.log(`Kết quả: ${filtered.length} khách`);
+
+console.table(filtered.map(f => ({ uid: f.uid, name: f.name })));
+
+
+
+dataUID = filtered.map(f => ({
+
+uid: f.uid, name: f.name,
+
+gender: '', username: f.uid,
+
+seen: 1, time: Date.now().toString()
+
+}));
+
+sendUID = [...dataUID];
+
+totalFriend = dataUID.length;
+
+
+
+// ✅ Cập nhật đúng ID và hiển thị số
+
+const countEl = document.getElementById('toltalSendCount');
+
+if (countEl) countEl.innerHTML = `Tổng gửi: ${filtered.length}/${totalFriend}`;
+
+
+
+window.setButtonsDisabled(false); // Mở khoá sau khi xong
+
+}).catch(err => {
+
+console.error('Lỗi khi filter:', err);
+
+window.setButtonsDisabled(false);
+
+});
+
+};
+
+
+
+getTagList(page_id).then(tags => {
+
+console.log(`Đã load ${tags.length} nhãn`);
+
+
+
+// Bật radio sau khi load xong
+
+const radios = document.querySelectorAll('input[name="tag_mode"]');
+
+radios.forEach(r => r.disabled = false);
+
+
+
+const input = document.getElementById('search_dl2811');
+
+input.setAttribute('autocomplete', 'off');
+
+input.onkeyup = null;
+
+
+
+const oldDropdown = input.parentNode.querySelector('.tag-dropdown');
+
+if (oldDropdown) oldDropdown.remove();
+
+
+
+const dropdown = document.createElement('div');
+
+dropdown.className = 'tag-dropdown';
+
+dropdown.style.cssText = `
+
+position:absolute; top:36px; left:0; right:0;
+
+background:#fff; border:1px solid #ddd; border-radius:6px;
+
+max-height:250px; overflow-y:auto; z-index:9999; display:none;
+
+box-shadow:0 4px 12px rgba(0,0,0,0.15);
+
+`;
+
+input.parentNode.style.position = 'relative';
+
+input.parentNode.appendChild(dropdown);
+
+
+
+const getMode = () => {
+
+const r = document.querySelector('input[name="tag_mode"]:checked');
+
+return r ? r.value : 'INNER';
+
+};
+
+
+
+const renderDropdown = (keyword = '') => {
+
+dropdown.innerHTML = '';
+
+const matched = keyword
+
+? tags.filter(t => removeDau(t.node.name).toLowerCase().includes(removeDau(keyword).toLowerCase().trim()))
+
+: tags;
+
+
+
+if (!matched.length) { dropdown.style.display = 'none'; return; }
+
+
+
+matched.forEach(t => {
+
+const color = '#' + t.node.label_color.slice(0, 6);
+
+const isSelected = window._selectedTags.has(t.node.id);
+
+const item = document.createElement('div');
+
+item.style.cssText = `
+
+padding:8px 12px; cursor:pointer; font-size:13px;
+
+border-bottom:1px solid #f0f0f0;
+
+display:flex; align-items:center; gap:8px;
+
+background:${isSelected ? '#f0f7ff' : '#fff'};
+
+`;
+
+item.innerHTML = `
+
+<span style="width:12px;height:12px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block;"></span>
+
+<span style="flex:1;">${t.node.name}</span>
+
+<span style="font-size:11px;color:#999;">${t.node.contact_count} khách</span>
+
+${isSelected ? '<span style="color:green;font-size:15px;">✓</span>' : ''}
+
+`;
+
+item.onmouseenter = () => item.style.background = '#f5f5f5';
+
+item.onmouseleave = () => item.style.background = isSelected ? '#f0f7ff' : '#fff';
+
+item.onclick = () => {
+
+const exclude = getMode() === 'OUTER';
+
+if (isSelected && window._selectedTags.get(t.node.id)?.exclude === exclude) {
+
+window._selectedTags.delete(t.node.id);
+
+} else {
+
+window._selectedTags.set(t.node.id, { tagName: t.node.name, color, exclude });
+
+}
+
+renderChips();
+
+renderDropdown(input.value);
+
+window.filterBySelectedTags();
+
+};
+
+dropdown.appendChild(item);
+
+});
+
+
+
+dropdown.style.display = 'block';
+
+};
+
+
+
+input.addEventListener('input', () => renderDropdown(input.value));
+
+input.addEventListener('focus', () => renderDropdown(input.value));
+
+document.addEventListener('click', e => {
+
+if (!input.parentNode.contains(e.target) && !document.getElementById('tag_control_dl2811')?.contains(e.target)) {
+
+dropdown.style.display = 'none';
+
+}
+
+});
+
+});
+      // Kích hoạt hàm lọc của bạn ngay lập tức
+      if (typeof window.filterBySelectedTags === 'function') {
+        window.filterBySelectedTags();
+      }
+      
+      // Ngừng theo dõi để tránh chạy lại nhiều lần không cần thiết
+      observer.disconnect();
+    }
+  });
+
+  // Cấu hình theo dõi sự thay đổi nội dung và thuộc tính của thẻ
+  observer.observe(loadingEl, { 
+    childList: true, 
+    characterData: true, 
+    subtree: true,
+    attributes: true, 
+    attributeFilter: ['style', 'class'] 
+  });
+})();
