@@ -11673,6 +11673,18 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 				controlDiv.id = 'tag_control_dl2811';
 				controlDiv.style.cssText = 'margin: 6px 0;';
 				controlDiv.innerHTML = `
+					<div style="font-size:12px;color:#888;margin-bottom:6px;">Quét hộp thư</div>
+					<div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap;">
+						<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+							<input type="checkbox" id="chk_folder_INBOX" checked style="accent-color:#1890ff;width:14px;height:14px;"> Chính
+						</label>
+						<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+							<input type="checkbox" id="chk_folder_ARCHIVED" style="accent-color:#1890ff;width:14px;height:14px;"> Xong
+						</label>
+						<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+							<input type="checkbox" id="chk_folder_SPAM" style="accent-color:#1890ff;width:14px;height:14px;"> Spam
+						</label>
+					</div>
 					<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px;">
 						<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
 							<input type="radio" name="tag_mode" value="INNER" checked> Chọn
@@ -11680,7 +11692,6 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 						<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
 							<input type="radio" name="tag_mode" value="OUTER"> Loại trừ
 						</label>
-						<!-- Thêm nút Lọc (ẩn mặc định) -->
 						<button id="btn_filter_tags" style="
 							font-size:12px; padding:2px 8px; border-radius:4px;
 							border:1px solid #1890ff; background:#e6f7ff; color:#1890ff;
@@ -11704,10 +11715,17 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 				document.getElementById('btn_clear_tags').onclick = () => {
 					window._selectedTags = new Map();
 					renderChips();
-					console.log('Đã xoá tất cả nhãn đã chọn');
+					if (window._originalDataUID) {
+						dataUID = [...window._originalDataUID];
+						sendUID = [...window._originalDataUID];
+						totalFriend = dataUID.length;
+						const countEl = document.getElementById('toltalSendCount');
+						if (countEl) countEl.innerHTML = `Tổng gửi: ${totalFriend}/${totalFriend}`;
+						console.log(`Đã khôi phục ${totalFriend} khách (data gốc)`);
+					}
 				};
 
-				// Nút Lọc – khi click mới chạy filter
+				// Nút Lọc
 				document.getElementById('btn_filter_tags').onclick = () => {
 					if (window._selectedTags.size === 0) return;
 					console.log('Bắt đầu lọc theo nhãn...');
@@ -11731,7 +11749,7 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 			function renderChips() {
 				const chipsEl = document.getElementById('tag_chips_dl2811');
 				const clearBtn = document.getElementById('btn_clear_tags');
-				const filterBtn = document.getElementById('btn_filter_tags'); // thêm
+				const filterBtn = document.getElementById('btn_filter_tags');
 
 				if (!chipsEl) return;
 
@@ -11739,11 +11757,10 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 
 				if (window._selectedTags.size === 0) {
 					if (clearBtn) clearBtn.style.display = 'none';
-					if (filterBtn) filterBtn.style.display = 'none'; // ẩn nút lọc
+					if (filterBtn) filterBtn.style.display = 'none';
 					return;
 				}
 
-				// Hiện cả 2 nút khi có nhãn được chọn
 				if (clearBtn) clearBtn.style.display = 'inline-block';
 				if (filterBtn) filterBtn.style.display = 'inline-block';
 
@@ -11764,7 +11781,6 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 					chip.querySelector('span[data-id]').onclick = () => {
 						window._selectedTags.delete(tagId);
 						renderChips();
-						// Không gọi filterBySelectedTags ở đây nữa
 					};
 					chipsEl.appendChild(chip);
 				});
@@ -11772,6 +11788,21 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 
 			window.filterBySelectedTags = async function () {
 				if (window._selectedTags.size === 0) return;
+
+				// ✅ Đọc các folder được tick
+				const folderMap = {
+					INBOX:    document.getElementById('chk_folder_INBOX'),
+					ARCHIVED: document.getElementById('chk_folder_ARCHIVED'),
+					SPAM:     document.getElementById('chk_folder_SPAM'),
+				};
+				const folders = Object.entries(folderMap)
+					.filter(([_, el]) => el && el.checked)
+					.map(([key]) => key);
+
+				if (folders.length === 0) {
+					alert('Vui lòng chọn ít nhất 1 hộp thư để quét!');
+					return;
+				}
 
 				window.setButtonsDisabled(true);
 
@@ -11784,46 +11815,124 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 				});
 
 				const allMap = new Map();
-				let cursor = null;
-				let hasMore = true;
-				let prevSize = -1;
 
-				while (hasMore) {
-					const data = await getFriend(cursor).catch(() => null);
-					if (!data) break;
+				const getFriendByFolder = async (cursor, folderTag) => {
+					try {
+						const queryParams = {
+							limit: 200,
+							tags: [folderTag],
+							isWorkUser: false,
+							includeDeliveryReceipts: true,
+							includeSeqID: false,
+							is_work_teamwork_not_putting_muted_in_unreads: false,
+						};
+						if (cursor != null) queryParams.before = cursor;
 
-					const nodes = data?.o0?.data?.viewer?.message_threads?.nodes;
-					if (!nodes || nodes.length === 0) break;
+						const queries = JSON.stringify({
+							o0: {
+								doc_id: '3566388080113165',
+								query_params: queryParams,
+							},
+						});
 
-					nodes.forEach((node) => {
-						const actor = node?.thread_key?.other_user_id;
-						if (!actor) return;
-						const edges = node?.all_participants?.edges || [];
-						const participant = edges.find(
-							(e) => e?.node?.messaging_actor?.id === actor
-						);
-						const name = participant?.node?.messaging_actor?.name || actor;
-						const labels =
-							node?.related_page_thread?.custom_thread_labels?.nodes || [];
-						const labelIds = labels.map((l) => l.id);
-						allMap.set(actor, { uid: actor, name, labelIds });
-					});
+						const body = new URLSearchParams({
+							batch_name: 'MessengerGraphQLThreadlistFetcher',
+							__user: uid,
+							fb_dtsg: fb_dtsg,
+							av: page_id,
+							queries,
+						}).toString();
 
-					if (allMap.size === prevSize) {
-						hasMore = false;
-						break;
+						const res = await fetch(linkCham + '/api/graphqlbatch/', {
+							method: 'POST',
+							mode: 'cors',
+							credentials: 'include',
+							headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+							body,
+						});
+
+						let text = await res.text();
+
+						text = text.replace(/^for\s*\(\s*;;\s*\)\s*;/, '').trim();
+
+						let depth = 0, start = -1, end = -1;
+						for (let i = 0; i < text.length; i++) {
+							if (text[i] === '{') {
+								if (depth === 0) start = i;
+								depth++;
+							} else if (text[i] === '}') {
+								depth--;
+								if (depth === 0 && start !== -1) {
+									end = i;
+									break;
+								}
+							}
+						}
+
+						if (start === -1 || end === -1) {
+							console.warn(`[${folderTag}] Không tìm được JSON hợp lệ`);
+							return null;
+						}
+
+						return JSON.parse(text.slice(start, end + 1));
+
+					} catch (e) {
+						console.warn(`Lỗi folder ${folderTag}:`, e);
+						return null;
 					}
-					prevSize = allMap.size;
+				};
 
-					const lastNode = nodes[nodes.length - 1];
-					const nextCursor = lastNode?.updated_time_precise ?? null;
-					if (!nextCursor || nextCursor === cursor) {
-						hasMore = false;
-					} else {
-						cursor = nextCursor - 1000;
+				for (const folder of folders) {
+					let cursor = null;
+					let hasMore = true;
+					let prevSize = -1;
+					let folderCount = 0;
+
+					console.log(`📂 Đang quét: ${folder}...`);
+
+					while (hasMore) {
+						const data = await getFriendByFolder(cursor, folder).catch(() => null);
+						if (!data) break;
+
+						const nodes = data?.o0?.data?.viewer?.message_threads?.nodes;
+						if (!nodes || nodes.length === 0) break;
+
+						nodes.forEach((node) => {
+							const actor = node?.thread_key?.other_user_id;
+							if (!actor) return;
+							const edges = node?.all_participants?.edges || [];
+							const participant = edges.find(
+								(e) => e?.node?.messaging_actor?.id === actor
+							);
+							const name = participant?.node?.messaging_actor?.name || actor;
+							const labels = node?.related_page_thread?.custom_thread_labels?.nodes || [];
+							const labelIds = labels.map((l) => l.id);
+
+							if (!allMap.has(actor)) {
+								allMap.set(actor, { uid: actor, name, labelIds });
+							} else {
+								const existing = allMap.get(actor);
+								const merged = [...new Set([...existing.labelIds, ...labelIds])];
+								allMap.set(actor, { ...existing, labelIds: merged });
+							}
+							folderCount++;
+						});
+
+						if (allMap.size === prevSize) { hasMore = false; break; }
+						prevSize = allMap.size;
+
+						const lastNode = nodes[nodes.length - 1];
+						const nextCursor = lastNode?.updated_time_precise ?? null;
+						if (!nextCursor || nextCursor === cursor) {
+							hasMore = false;
+						} else {
+							cursor = nextCursor - 1000;
+						}
+
+						console.log(`  └ ${folder}: ${folderCount} thread, tổng ${allMap.size} khách...`);
 					}
 
-					console.log(`Đã quét: ${allMap.size} khách...`);
+					console.log(`✅ ${folder}: xong`);
 				}
 
 				let filtered = [];
@@ -11841,7 +11950,12 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 					);
 				}
 
-				console.log(`Kết quả: ${filtered.length} khách`);
+				console.log(`🎯 Kết quả: ${filtered.length} khách từ tổng ${allMap.size} (${folders.join(', ')})`);
+
+				if (!window._originalDataUID && typeof dataUID !== 'undefined' && dataUID.length > 0) {
+					window._originalDataUID = [...dataUID];
+					console.log(`💾 Đã cache ${window._originalDataUID.length} khách (data gốc)`);
+				}
 
 				dataUID = filtered.map((f) => ({
 					uid: f.uid,
@@ -11856,8 +11970,7 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 				totalFriend = dataUID.length;
 
 				const countEl = document.getElementById('toltalSendCount');
-				if (countEl)
-					countEl.innerHTML = `Tổng gửi: ${filtered.length}/${totalFriend}`;
+				if (countEl) countEl.innerHTML = `Tổng gửi: ${filtered.length}/${totalFriend}`;
 
 				window.setButtonsDisabled(false);
 			};
@@ -11945,8 +12058,6 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 
 							renderChips();
 							renderDropdown(input.value);
-							// ❌ Đã xoá dòng: window.filterBySelectedTags();
-							// ✅ Chỉ hiển thị nút Lọc, người dùng tự click khi muốn.
 						};
 
 						dropdown.appendChild(item);
@@ -11967,9 +12078,6 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 					}
 				});
 			});
-
-			// ❌ Đã xoá dòng: if (typeof window.filterBySelectedTags === 'function') { window.filterBySelectedTags(); }
-			// Không tự động lọc khi mới load, đợi người dùng nhấn nút Lọc.
 
 			observer.disconnect();
 		}
