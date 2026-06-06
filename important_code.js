@@ -11655,7 +11655,6 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 		container.scrollTop = container.scrollHeight;
 	};
 })();
-
 (function () {
 	const loadingEl = document.getElementById('loadingFriendList');
 	if (!loadingEl) return;
@@ -11665,71 +11664,63 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 			loadingEl.innerHTML.trim() === '' || loadingEl.style.display === 'none';
 
 		if (isLoaded) {
-			console.log('✅ Dữ liệu đã tải xong (Full)! Tiến hành lọc nhãn...');
+			console.log('✅ Dữ liệu đã tải xong (Full)! Tiến hành thiết lập lọc nhãn...');
 
 			(function () {
 				const tagList = document.getElementById('tag_list');
 
 				const controlDiv = document.createElement('div');
-
 				controlDiv.id = 'tag_control_dl2811';
-
 				controlDiv.style.cssText = 'margin: 6px 0;';
-
 				controlDiv.innerHTML = `
-
-<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px;">
-
-<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
-
-<input type="radio" name="tag_mode" value="INNER" checked> Chọn
-
-</label>
-
-<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
-
-<input type="radio" name="tag_mode" value="OUTER"> Loại trừ
-
-</label>
-
-<button id="btn_clear_tags" style="
-
-font-size:12px; padding:2px 8px; border-radius:4px;
-
-border:1px solid #ddd; background:#fff; cursor:pointer;
-
-display:none;
-
-">Xoá tất cả</button>
-
-</div>
-
-<div id="tag_chips_dl2811" style="display:flex;flex-wrap:wrap;gap:4px;min-height:0;"></div>
-
-`;
+					<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px;">
+						<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+							<input type="radio" name="tag_mode" value="INNER" checked> Chọn
+						</label>
+						<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+							<input type="radio" name="tag_mode" value="OUTER"> Loại trừ
+						</label>
+						<!-- Thêm nút Lọc (ẩn mặc định) -->
+						<button id="btn_filter_tags" style="
+							font-size:12px; padding:2px 8px; border-radius:4px;
+							border:1px solid #1890ff; background:#e6f7ff; color:#1890ff;
+							cursor:pointer; display:none;
+						">🔍 Lọc</button>
+						<button id="btn_clear_tags" style="
+							font-size:12px; padding:2px 8px; border-radius:4px;
+							border:1px solid #ddd; background:#fff; cursor:pointer;
+							display:none;
+						">Xoá tất cả</button>
+					</div>
+					<div id="tag_chips_dl2811" style="display:flex;flex-wrap:wrap;gap:4px;min-height:0;"></div>
+				`;
 
 				tagList.parentNode.insertBefore(controlDiv, tagList);
 
 				const radios = controlDiv.querySelectorAll('input[type="radio"]');
-
 				radios.forEach((r) => (r.disabled = true));
 
+				// Nút Xoá tất cả
 				document.getElementById('btn_clear_tags').onclick = () => {
 					window._selectedTags = new Map();
-
 					renderChips();
-
 					console.log('Đã xoá tất cả nhãn đã chọn');
+				};
+
+				// Nút Lọc – khi click mới chạy filter
+				document.getElementById('btn_filter_tags').onclick = () => {
+					if (window._selectedTags.size === 0) return;
+					console.log('Bắt đầu lọc theo nhãn...');
+					window.filterBySelectedTags();
 				};
 
 				function setButtonsDisabled(disabled) {
 					const fastBtn = document.getElementById('fastClickBtn');
-
 					const sendBtn = document.getElementById('btnStartSend');
-
+					const filterBtn = document.getElementById('btn_filter_tags');
 					if (fastBtn) fastBtn.disabled = disabled;
-
 					if (sendBtn) sendBtn.disabled = disabled;
+					if (filterBtn) filterBtn.disabled = disabled;
 				}
 
 				window.setButtonsDisabled = setButtonsDisabled;
@@ -11739,8 +11730,8 @@ display:none;
 
 			function renderChips() {
 				const chipsEl = document.getElementById('tag_chips_dl2811');
-
 				const clearBtn = document.getElementById('btn_clear_tags');
+				const filterBtn = document.getElementById('btn_filter_tags'); // thêm
 
 				if (!chipsEl) return;
 
@@ -11748,47 +11739,33 @@ display:none;
 
 				if (window._selectedTags.size === 0) {
 					if (clearBtn) clearBtn.style.display = 'none';
-
+					if (filterBtn) filterBtn.style.display = 'none'; // ẩn nút lọc
 					return;
 				}
 
+				// Hiện cả 2 nút khi có nhãn được chọn
 				if (clearBtn) clearBtn.style.display = 'inline-block';
+				if (filterBtn) filterBtn.style.display = 'inline-block';
 
 				window._selectedTags.forEach((val, tagId) => {
 					const chip = document.createElement('span');
-
 					chip.style.cssText = `
-
-display:inline-flex; align-items:center; gap:4px;
-
-padding:3px 8px; border-radius:12px; font-size:12px;
-
-background:${val.color}22; border:1px solid ${val.color};
-
-color:#333; cursor:default;
-
-${val.exclude ? 'text-decoration:line-through;opacity:0.7;' : ''}
-
-`;
-
+						display:inline-flex; align-items:center; gap:4px;
+						padding:3px 8px; border-radius:12px; font-size:12px;
+						background:${val.color}22; border:1px solid ${val.color};
+						color:#333; cursor:default;
+						${val.exclude ? 'text-decoration:line-through;opacity:0.7;' : ''}
+					`;
 					chip.innerHTML = `
-
-<span style="width:8px;height:8px;border-radius:50%;background:${val.color};display:inline-block;flex-shrink:0;"></span>
-
-${val.exclude ? '🚫 ' : '✓ '}${val.tagName}
-
-<span style="cursor:pointer;font-weight:bold;margin-left:2px;font-size:14px;" data-id="${tagId}">×</span>
-
-`;
-
+						<span style="width:8px;height:8px;border-radius:50%;background:${val.color};display:inline-block;flex-shrink:0;"></span>
+						${val.exclude ? '🚫 ' : '✓ '}${val.tagName}
+						<span style="cursor:pointer;font-weight:bold;margin-left:2px;font-size:14px;" data-id="${tagId}">×</span>
+					`;
 					chip.querySelector('span[data-id]').onclick = () => {
 						window._selectedTags.delete(tagId);
-
 						renderChips();
-
-						window.filterBySelectedTags();
+						// Không gọi filterBySelectedTags ở đây nữa
 					};
-
 					chipsEl.appendChild(chip);
 				});
 			}
@@ -11799,7 +11776,6 @@ ${val.exclude ? '🚫 ' : '✓ '}${val.tagName}
 				window.setButtonsDisabled(true);
 
 				const includeTags = new Set();
-
 				const excludeTags = new Set();
 
 				window._selectedTags.forEach((val, tagId) => {
@@ -11808,55 +11784,39 @@ ${val.exclude ? '🚫 ' : '✓ '}${val.tagName}
 				});
 
 				const allMap = new Map();
-
 				let cursor = null;
-
 				let hasMore = true;
-
 				let prevSize = -1;
 
 				while (hasMore) {
 					const data = await getFriend(cursor).catch(() => null);
-
 					if (!data) break;
 
 					const nodes = data?.o0?.data?.viewer?.message_threads?.nodes;
-
 					if (!nodes || nodes.length === 0) break;
 
 					nodes.forEach((node) => {
 						const actor = node?.thread_key?.other_user_id;
-
 						if (!actor) return;
-
 						const edges = node?.all_participants?.edges || [];
-
 						const participant = edges.find(
 							(e) => e?.node?.messaging_actor?.id === actor
 						);
-
 						const name = participant?.node?.messaging_actor?.name || actor;
-
 						const labels =
 							node?.related_page_thread?.custom_thread_labels?.nodes || [];
-
 						const labelIds = labels.map((l) => l.id);
-
 						allMap.set(actor, { uid: actor, name, labelIds });
 					});
 
 					if (allMap.size === prevSize) {
 						hasMore = false;
-
 						break;
 					}
-
 					prevSize = allMap.size;
 
 					const lastNode = nodes[nodes.length - 1];
-
 					const nextCursor = lastNode?.updated_time_precise ?? null;
-
 					if (!nextCursor || nextCursor === cursor) {
 						hasMore = false;
 					} else {
@@ -11867,7 +11827,6 @@ ${val.exclude ? '🚫 ' : '✓ '}${val.tagName}
 				}
 
 				let filtered = [];
-
 				if (includeTags.size > 0) {
 					allMap.forEach((u) => {
 						if (u.labelIds.some((id) => includeTags.has(id))) filtered.push(u);
@@ -11887,20 +11846,16 @@ ${val.exclude ? '🚫 ' : '✓ '}${val.tagName}
 				dataUID = filtered.map((f) => ({
 					uid: f.uid,
 					name: f.name,
-
 					gender: '',
 					username: f.uid,
-
 					seen: 1,
 					time: Date.now().toString(),
 				}));
 
 				sendUID = [...dataUID];
-
 				totalFriend = dataUID.length;
 
 				const countEl = document.getElementById('toltalSendCount');
-
 				if (countEl)
 					countEl.innerHTML = `Tổng gửi: ${filtered.length}/${totalFriend}`;
 
@@ -11911,48 +11866,33 @@ ${val.exclude ? '🚫 ' : '✓ '}${val.tagName}
 				console.log(`Đã load ${tags.length} nhãn`);
 
 				const radios = document.querySelectorAll('input[name="tag_mode"]');
-
 				radios.forEach((r) => (r.disabled = false));
 
 				const input = document.getElementById('search_dl2811');
-
 				input.setAttribute('autocomplete', 'off');
-
 				input.onkeyup = null;
 
 				const oldDropdown = input.parentNode.querySelector('.tag-dropdown');
-
 				if (oldDropdown) oldDropdown.remove();
 
 				const dropdown = document.createElement('div');
-
 				dropdown.className = 'tag-dropdown';
-
 				dropdown.style.cssText = `
-
-position:absolute; top:36px; left:0; right:0;
-
-background:#fff; border:1px solid #ddd; border-radius:6px;
-
-max-height:250px; overflow-y:auto; z-index:9999; display:none;
-
-box-shadow:0 4px 12px rgba(0,0,0,0.15);
-
-`;
-
+					position:absolute; top:36px; left:0; right:0;
+					background:#fff; border:1px solid #ddd; border-radius:6px;
+					max-height:250px; overflow-y:auto; z-index:9999; display:none;
+					box-shadow:0 4px 12px rgba(0,0,0,0.15);
+				`;
 				input.parentNode.style.position = 'relative';
-
 				input.parentNode.appendChild(dropdown);
 
 				const getMode = () => {
 					const r = document.querySelector('input[name="tag_mode"]:checked');
-
 					return r ? r.value : 'INNER';
 				};
 
 				const renderDropdown = (keyword = '') => {
 					dropdown.innerHTML = '';
-
 					const matched = keyword
 						? tags.filter((t) =>
 								removeDau(t.node.name)
@@ -11968,43 +11908,28 @@ box-shadow:0 4px 12px rgba(0,0,0,0.15);
 
 					matched.forEach((t) => {
 						const color = '#' + t.node.label_color.slice(0, 6);
-
 						const isSelected = window._selectedTags.has(t.node.id);
 
 						const item = document.createElement('div');
-
 						item.style.cssText = `
-
-padding:8px 12px; cursor:pointer; font-size:13px;
-
-border-bottom:1px solid #f0f0f0;
-
-display:flex; align-items:center; gap:8px;
-
-background:${isSelected ? '#f0f7ff' : '#fff'};
-
-`;
-
+							padding:8px 12px; cursor:pointer; font-size:13px;
+							border-bottom:1px solid #f0f0f0;
+							display:flex; align-items:center; gap:8px;
+							background:${isSelected ? '#f0f7ff' : '#fff'};
+						`;
 						item.innerHTML = `
-
-<span style="width:12px;height:12px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block;"></span>
-
-<span style="flex:1;">${t.node.name}</span>
-
-<span style="font-size:11px;color:#999;">${t.node.contact_count} khách</span>
-
-${isSelected ? '<span style="color:green;font-size:15px;">✓</span>' : ''}
-
-`;
+							<span style="width:12px;height:12px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block;"></span>
+							<span style="flex:1;">${t.node.name}</span>
+							<span style="font-size:11px;color:#999;">${t.node.contact_count} khách</span>
+							${isSelected ? '<span style="color:green;font-size:15px;">✓</span>' : ''}
+						`;
 
 						item.onmouseenter = () => (item.style.background = '#f5f5f5');
-
 						item.onmouseleave = () =>
 							(item.style.background = isSelected ? '#f0f7ff' : '#fff');
 
 						item.onclick = () => {
 							const exclude = getMode() === 'OUTER';
-
 							if (
 								isSelected &&
 								window._selectedTags.get(t.node.id)?.exclude === exclude
@@ -12019,10 +11944,9 @@ ${isSelected ? '<span style="color:green;font-size:15px;">✓</span>' : ''}
 							}
 
 							renderChips();
-
 							renderDropdown(input.value);
-
-							window.filterBySelectedTags();
+							// ❌ Đã xoá dòng: window.filterBySelectedTags();
+							// ✅ Chỉ hiển thị nút Lọc, người dùng tự click khi muốn.
 						};
 
 						dropdown.appendChild(item);
@@ -12032,7 +11956,6 @@ ${isSelected ? '<span style="color:green;font-size:15px;">✓</span>' : ''}
 				};
 
 				input.addEventListener('input', () => renderDropdown(input.value));
-
 				input.addEventListener('focus', () => renderDropdown(input.value));
 
 				document.addEventListener('click', (e) => {
@@ -12045,9 +11968,8 @@ ${isSelected ? '<span style="color:green;font-size:15px;">✓</span>' : ''}
 				});
 			});
 
-			if (typeof window.filterBySelectedTags === 'function') {
-				window.filterBySelectedTags();
-			}
+			// ❌ Đã xoá dòng: if (typeof window.filterBySelectedTags === 'function') { window.filterBySelectedTags(); }
+			// Không tự động lọc khi mới load, đợi người dùng nhấn nút Lọc.
 
 			observer.disconnect();
 		}
