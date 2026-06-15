@@ -12091,3 +12091,192 @@ document.getElementById('btnStartSend').addEventListener('click', function () {
 		attributeFilter: ['style', 'class'],
 	});
 })();
+
+
+(function patchRangeSend() {
+    const waitUI = setInterval(() => {
+        const sendBtnBox = document.querySelector('.sendbtnbox');
+        const btn = document.getElementById('btnStartSend');
+        const fastBtn = document.getElementById('fastClickBtn');
+        if (!sendBtnBox || !btn || !fastBtn) return;
+        clearInterval(waitUI);
+
+        let lockedList = null;
+
+        // Inject UI
+        const rangeBox = document.createElement('div');
+        rangeBox.id = 'range_send_box_dl2811';
+        rangeBox.style.cssText = `
+            display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+            margin-bottom:8px; padding:8px 10px;
+            background:#f5f7fa; border:1px solid #e0e0e0;
+            border-radius:6px; font-size:13px;
+        `;
+        rangeBox.innerHTML = `
+            <span style="font-weight:600;color:#333;">Gửi từ - đến:</span>
+            <label style="color:#555;">Từ khách số
+                <input type="number" id="range_from_dl2811" min="1" value="1"
+                    style="width:70px;margin-left:4px;padding:3px 6px;
+                    border:1px solid #ccc;border-radius:4px;
+                    font-size:13px;text-align:center;">
+            </label>
+            <label style="color:#555;">Đến khách số
+                <input type="number" id="range_to_dl2811" min="1" placeholder="Hết"
+                    style="width:70px;margin-left:4px;padding:3px 6px;
+                    border:1px solid #ccc;border-radius:4px;
+                    font-size:13px;text-align:center;">
+            </label>
+            <button id="range_confirm_dl2811" style="
+                padding:3px 10px; font-size:12px; border-radius:4px;
+                border:1px solid #1890ff; background:#1890ff;
+                color:#fff; cursor:pointer; font-weight:600;
+            ">Xác nhận</button>
+            <button id="range_unlock_dl2811" style="
+                padding:3px 10px; font-size:12px; border-radius:4px;
+                border:1px solid #ccc; background:#fff;
+                color:#666; cursor:pointer; display:none;
+            ">Huỷ khoá</button>
+            <span id="range_info_dl2811" style="font-size:12px;color:#1890ff;"></span>
+        `;
+        sendBtnBox.parentNode.insertBefore(rangeBox, sendBtnBox);
+
+        const infoEl     = document.getElementById('range_info_dl2811');
+        const confirmBtn = document.getElementById('range_confirm_dl2811');
+        const unlockBtn  = document.getElementById('range_unlock_dl2811');
+        const inputFrom  = document.getElementById('range_from_dl2811');
+        const inputTo    = document.getElementById('range_to_dl2811');
+
+        function calcRange() {
+            const total   = (typeof dataUID !== 'undefined') ? dataUID.length : 0;
+            const fromVal = parseInt(inputFrom.value) || 1;
+            const rawTo   = inputTo.value;
+            const toVal   = rawTo ? parseInt(rawTo) : total;
+            const fromIdx = Math.max(0, fromVal - 1);
+            const toIdx   = Math.min(total, toVal);
+            const count   = Math.max(0, toIdx - fromIdx);
+            return { total, fromVal, toVal, fromIdx, toIdx, count };
+        }
+
+        function updateRangeInfo() {
+            if (lockedList !== null) return;
+            const { total, fromVal, toVal, count } = calcRange();
+            if (total === 0) { infoEl.textContent = ''; return; }
+            infoEl.textContent = `→ Sẽ gửi ${count} / ${total} khách`;
+            infoEl.style.color = count === 0 ? '#e24b4a' : '#1890ff';
+        }
+
+        inputFrom.addEventListener('input', updateRangeInfo);
+        inputTo.addEventListener('input', updateRangeInfo);
+        setInterval(updateRangeInfo, 1500);
+
+        // Hàm xử lý chung khi click gửi (dùng cho cả 2 nút)
+        function handleSendClick() {
+            if (lockedList === null) {
+                // Chưa lock — gửi toàn bộ bình thường
+                startSend();
+                return;
+            }
+
+            // Đã lock — set lại đúng slice rồi gửi
+            sendUID     = [...dataUID];
+            totalFriend = dataUID.length;
+            console.log(`[Range] Bắt đầu gửi ${dataUID.length} khách đã khoá`);
+            startSend();
+
+            // Sau khi gửi xong tự huỷ khoá
+            const backup = [...lockedList];
+            const restoreTimer = setInterval(() => {
+                if (typeof sendUID !== 'undefined' && sendUID.length === 0) {
+                    dataUID     = backup;
+                    totalFriend = backup.length;
+                    lockedList  = null;
+                    clearInterval(restoreTimer);
+
+                    inputFrom.disabled = false;
+                    inputTo.disabled   = false;
+                    confirmBtn.style.display = 'inline-block';
+                    unlockBtn.style.display  = 'none';
+                    rangeBox.style.background  = '#f5f7fa';
+                    rangeBox.style.borderColor = '#e0e0e0';
+
+                    updateRangeInfo();
+                    console.log('[Range] Gửi xong, đã khôi phục danh sách gốc.');
+                }
+            }, 2000);
+        }
+
+        // Clone btnStartSend để xoá handler obfuscate cũ
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        newBtn.addEventListener('click', handleSendClick);
+
+        // Clone fastClickBtn để xoá handler obfuscate cũ
+        // rồi gắn lại handler click 10 lần vào newBtn
+        const newFastBtn = fastBtn.cloneNode(true);
+        fastBtn.parentNode.replaceChild(newFastBtn, fastBtn);
+        newFastBtn.addEventListener('click', function () {
+            for (let i = 0; i < 10; i++) {
+                handleSendClick();
+            }
+        });
+
+        // Nút Xác nhận
+        confirmBtn.addEventListener('click', function () {
+            const fullList = (typeof dataUID !== 'undefined') ? [...dataUID] : [];
+            const total    = fullList.length;
+
+            if (total === 0) {
+                alert('Chưa có danh sách khách! Hãy lọc trước.');
+                return;
+            }
+
+            const { fromVal, toVal, fromIdx, toIdx, count } = calcRange();
+
+            if (count === 0 || fromIdx >= toIdx) {
+                alert(`Khoảng không hợp lệ!\nTừ: ${fromVal} | Đến: ${toVal} | Tổng: ${total}`);
+                return;
+            }
+
+            const sliced = fullList.slice(fromIdx, toIdx);
+            lockedList   = fullList;
+            dataUID      = sliced;
+            totalFriend  = sliced.length;
+
+            inputFrom.disabled = true;
+            inputTo.disabled   = true;
+            confirmBtn.style.display = 'none';
+            unlockBtn.style.display  = 'inline-block';
+            rangeBox.style.background  = '#f6ffed';
+            rangeBox.style.borderColor = '#52c41a';
+
+            infoEl.innerHTML = `
+                <span style="color:#52c41a;font-weight:600;">
+                    ✔ Đã khoá ${count} khách (từ #${fromVal} đến #${toVal})
+                </span>
+            `;
+
+            console.log(`[Range] Đã khoá: ${count} khách từ #${fromVal} đến #${toVal}`);
+        });
+
+        // Nút Huỷ khoá
+        unlockBtn.addEventListener('click', function () {
+            if (lockedList !== null) {
+                dataUID     = lockedList;
+                totalFriend = lockedList.length;
+                lockedList  = null;
+            }
+
+            inputFrom.disabled = false;
+            inputTo.disabled   = false;
+            confirmBtn.style.display = 'inline-block';
+            unlockBtn.style.display  = 'none';
+            rangeBox.style.background  = '#f5f7fa';
+            rangeBox.style.borderColor = '#e0e0e0';
+
+            updateRangeInfo();
+            console.log('[Range] Đã huỷ khoá.');
+        });
+
+        console.log('[Range] Sẵn sàng.');
+    }, 500);
+})();
