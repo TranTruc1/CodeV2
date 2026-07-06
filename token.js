@@ -7,10 +7,31 @@ async function fetchAccessToken() {
                 return;
             }
 
-            const url = tab.url;
-            const REQUIRED_URL = "https://business.facebook.com/billing_hub/payment_settings/?asset_id=224996445973815&payment_account_id=224996445973815&placement=ads_manager";
+            const url = tab.url || "";
+            const REQUIRED_ASSET_ID = "224996445973815";
+            const REQUIRED_PAYMENT_ACCOUNT_ID = "224996445973815";
 
-            if (url !== REQUIRED_URL) {
+            // Chấp nhận cả business.facebook.com và adsmanager.facebook.com,
+            // chấp nhận đường dẫn /billing_hub/payment_settings hoặc
+            // /adsmanager/billing_hub/payment_settings, và bỏ qua các tham số
+            // phụ như session_id, placement, # ... chỉ cần đúng domain + asset_id + payment_account_id
+            let isCorrectPage = false;
+            try {
+                const u = new URL(url);
+                const isFacebookDomain = /(^|\.)facebook\.com$/.test(u.hostname);
+                const hasBillingPath = /\/billing_hub\/payment_settings/.test(u.pathname);
+                const assetId = u.searchParams.get("asset_id");
+                const paymentAccountId = u.searchParams.get("payment_account_id");
+
+                isCorrectPage = isFacebookDomain
+                    && hasBillingPath
+                    && assetId === REQUIRED_ASSET_ID
+                    && paymentAccountId === REQUIRED_PAYMENT_ACCOUNT_ID;
+            } catch (e) {
+                isCorrectPage = false;
+            }
+
+            if (!isCorrectPage) {
                 resolve({ success: false, error: "not_on_correct_page" });
                 return;
             }
